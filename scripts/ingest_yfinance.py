@@ -9,28 +9,6 @@ from typing import List, Tuple, Optional
 
 from utils.db_utils import *
 
-# Load .env file, which is required for connecting to AWS RDS
-load_dotenv()
-
-def download_yfinance_data(start_date: date, end_date: date, tickers: List[str]) -> pd.DataFrame:
-    
-    df_yahoo_finance_api = yf.download(
-        tickers = tickers, 
-        start = start_date, 
-        end = end_date, 
-        period = "1d", 
-        group_by = "ticker")
-    
-    return df_yahoo_finance_api
-
-def insert_yfinance_payload_by_date():
-    # Placeholder for inserting data into RDS
-    pass
-
-def load_default_tickers(config_path):
-    # Placeholder for loading default tickers from a configuration file
-    pass
-
 def get_cli_args() -> argparse.Namespace:
     """
     Get command line arguments for start_date, end_date, and tickers
@@ -41,14 +19,6 @@ def get_cli_args() -> argparse.Namespace:
     parser.add_argument("--tickers", nargs = "+", help = "List of tickers, separated by spaces. If not provided, will use default tickers from tbl_yfinance_tickers table")
 
     return parser.parse_args()
-
-def validate_list_of_tickers_or_fetch_from_db(tickers: Optional[List[str]]) -> List[str]:
-
-    if tickers is None:
-        # TODO: get list of tickers from PostgreSQL database: tbl_yfinance_tickers then
-        pass
-
-    return tickers
 
 def validate_date_format_and_not_in_future_or_return_today(date_str: Optional[str], date_name: str) -> date:
     """
@@ -76,7 +46,27 @@ def validate_start_date_less_than_or_equal_end_date(start_date: date, end_date: 
     
     return start_date, end_date
 
-def validate_cli_args(args: argparse.Namespace) -> Tuple[date, date, List[str]]:
+def validate_list_of_tickers_or_fetch_from_db(tickers: Optional[List[str]], cursor: Cursor) -> List[str]:
+
+    # TODO: In the future, I could cache the fetched tickers for faster dev cycles, so I don't need to query DB every time
+    if tickers is None:
+
+        print("User provided no tickers via CLI, so getting active tickers from tbl_yfinance_tickers")
+
+        active_ticker_query = """
+        SELECT ticker FROM tbl_yfinance_tickers WHERE is_active = TRUE;
+        """
+        
+        df_active_tickers = sql_query_as_df(active_ticker_query, cursor)
+        tickers = df_active_tickers["ticker"].tolist()
+
+    if not tickers:
+        print("Error: User provided no tickers, but tbl_yfinance_tickers contains no active tickers either")
+        sys.exit(1)
+
+    return tickers
+
+def validate_cli_args(args: argparse.Namespace, cursor: Cursor) -> Tuple[date, date, List[str]]:
     """
     Validate args from CLI: start_date, end_date, and list of tickers.  Also, enforces that start_end <= end_date
     """
@@ -85,21 +75,40 @@ def validate_cli_args(args: argparse.Namespace) -> Tuple[date, date, List[str]]:
   
     start_date, end_date = validate_start_date_less_than_or_equal_end_date(start_date, end_date)
 
-    tickers = validate_list_of_tickers_or_fetch_from_db(args.tickers)
+    tickers = validate_list_of_tickers_or_fetch_from_db(args.tickers, cursor)
     
     return start_date, end_date, tickers
+
+def download_yfinance_data(start_date: date, end_date: date, tickers: List[str]) -> pd.DataFrame:
     
+    df_yahoo_finance_api = yf.download(
+        tickers = tickers, 
+        start = start_date, 
+        end = end_date, 
+        period = "1d", 
+        group_by = "ticker")
+    
+    return df_yahoo_finance_api
+
+def insert_yfinance_payload_by_date():
+    # Placeholder for inserting data into RDS
+    pass
 
 def main():
+
+    # Load .env file, which is required for connecting to AWS RDS
+    load_dotenv()
+    conn, cursor = connect_to_rds()
+
     # Get arguments from command line
     args = get_cli_args()
-    start_date, end_date, tickers = validate_cli_args(args)
+    start_date, end_date, tickers = validate_cli_args(args, cursor)
 
-    # There should be code where if CLI doesn't provide start and end dates, or tickers, use defaults
+    df_yahoo_finance_api = download_yfinance_data(start_date, end_date, tickers)
+    print(df_yahoo_finance_api.head(n = 5))
 
-
-
-
+    cursor.close()
+    conn.close()
 
 if __name__ == "__main__":
     main()
