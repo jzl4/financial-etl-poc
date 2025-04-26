@@ -14,7 +14,7 @@ from psycopg2.extensions import connection as Connection
 from psycopg2.extensions import cursor as Cursor
 from psycopg2 import OperationalError, ProgrammingError, Error
 
-def connect_to_rds(rds_host: str, rds_port: int, rds_dbname: str, rds_username: str, rds_password: str) -> Tuple[Connection, Cursor]:
+def connect_to_rds() -> Tuple[Connection, Cursor]:
     """
     Connect to the PostgreSQL database on AWS RDS and return the connection and cursor objects
     """
@@ -69,38 +69,3 @@ def sql_query_as_df(sql_query: str, cursor) -> pd.DataFrame:
     df_from_query = pd.DataFrame(rows, columns=column_names)
     
     return df_from_query
-
-# TODO: Should I keep this function in this file?  Or should I create a "setup tables" file and run that?
-def create_tbl_api_payloads_yfinance_daily(cursor, conn) -> None:
-    """
-    Create the tbl_api_payloads_yfinance_daily table if it doesn't already exist.
-    """
-    create_table_sql = """
-    CREATE TABLE IF NOT EXISTS tbl_api_payloads_yfinance_daily (
-        business_date DATE NOT NULL,
-        ingestion_timestamp TIMESTAMPTZ DEFAULT NOW(),
-        raw_payload JSONB,
-        PRIMARY KEY (business_date)
-    );
-    """
-    cursor.execute(create_table_sql)
-    conn.commit()
-
-# TODO: Should I keep this function in this file?  Or should I create a "setup tables" file and run that?
-def create_tbl_yfinance_prices_daily_staging(cursor, conn) -> None:
-    create_price_table_staging = """
-    CREATE TABLE IF NOT EXISTS tbl_yfinance_prices_daily_staging (
-        ticker TEXT NOT NULL,
-        business_date DATE NOT NULL,
-        price_open NUMERIC,
-        price_low NUMERIC,
-        price_high NUMERIC,
-        price_close NUMERIC,
-        volume NUMERIC,
-        created_timestamp TIMESTAMPTZ DEFAULT NOW(),
-        PRIMARY KEY (ticker, business_date)
-    );
-    """
-
-    cursor.execute(create_price_table_staging)
-    conn.commit()
