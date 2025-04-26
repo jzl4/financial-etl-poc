@@ -105,9 +105,42 @@ def download_yfinance_data(start_date: date, end_date: date, tickers: List[str])
     
     return df_yahoo_finance_api
 
-def insert_yfinance_payload_by_date():
-    # Placeholder for inserting data into RDS
-    pass
+def insert_yfinance_payload_by_date(df_yahoo_finance_api: pd.DataFrame, cursor: Cursor, conn: Connection) -> None:
+    """
+    Insert Pandas dataframe (containing yahoo finance API call) into PostgreSQL table tbl_api_payloads_yfinance_daily,
+    with each row of table containing a business_date's data
+    TODO: implement reverse transformer, which extracts from tbl_api_payloads_yfinance_daily and
+        re-creates the original multi-index dataframe from the yfinance API calls.  Useful for future audit/debugging purposes, but not required now
+    TODO: add exception handling, retry logic
+    TODO: Log how many rows were inserted vs skipped
+    TODO: Add unit test using a mock Postgres or sqlite test instance
+    TODO: Hook into audit table (record insert status + timestamp)
+    """
+    
+    n_rows = len(df_yahoo_finance_api.index)
+
+    print(f"Running insert_yfinance_payload_by_date with {n_rows}")
+
+    for timestamp in df_yahoo_finance_api.index:
+
+        # Ensure that row of yahoo_finance_api is actually a dataframe, not a series
+        row_of_df_yahoo_finance_api = df_yahoo_finance_api.loc[[timestamp]]
+
+        # Ensures we have a list of list such as [["SPY","Open"],["SPY","High"],...].  Without orient="split", it would be ('SPY', 'Open')...
+        json_payload = row_of_df_yahoo_finance_api.to_json(orient = "split")
+
+        business_date = timestamp.date()
+
+        cursor.execute(
+            f"""
+            INSERT INTO tbl_api_payloads_yfinance_daily (business_date, raw_payload)
+            VALUES (%s, %s)
+            ON CONFLICT (business_date) DO NOTHING;
+            """,
+            (business_date, json_payload)
+        )
+
+    conn.commit()
 
 def main():
 
@@ -121,6 +154,8 @@ def main():
 
     df_yahoo_finance_api = download_yfinance_data(start_date, end_date, tickers)
     print(df_yahoo_finance_api.head(n = 5))
+
+    insert_yfinance_payload_by_date(df_yahoo_finance_api, cursor, conn)
 
     cursor.close()
     conn.close()
