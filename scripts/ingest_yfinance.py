@@ -1,12 +1,22 @@
-import yfinance as yf
-import argparse
+# Standard library imports
 import sys
-import pandas as pd
+import os
 
+current_folder = os.path.dirname(__file__)
+project_root_folder = os.path.abspath(os.path.join(current_folder, ".."))
+sys.path.append(project_root_folder)
+
+import argparse
 from datetime import datetime, date
-from dotenv import load_dotenv
 from typing import List, Tuple, Optional
+from datetime import timedelta
 
+# Third-party libraries.  Hard to believe pandas is "third-party", but it's true because we need to pip-install it
+import yfinance as yf
+import pandas as pd
+from dotenv import load_dotenv
+
+# Local project imports
 from utils.db_utils import *
 
 def get_cli_args() -> argparse.Namespace:
@@ -14,9 +24,9 @@ def get_cli_args() -> argparse.Namespace:
     Get command line arguments for start_date, end_date, and tickers
     """
     parser = argparse.ArgumentParser(description="Arguments for ingesting Yahoo Finance data, including start_date, end_date, and tickers.")
-    parser.add_argument("--start_date", type = "str", help = "Start date of yahoo finance data extraction in YYYY-MM-DD format")
-    parser.add_argument("--end_date", type = "str", help = "End date of yahoo finance data extraction in YYYY-MM-DD format")
-    parser.add_argument("--tickers", nargs = "+", help = "List of tickers, separated by spaces. If not provided, will use default tickers from tbl_yfinance_tickers table")
+    parser.add_argument("--start_date", type = str, help = "Start date of yahoo finance data extraction in YYYY-MM-DD format")
+    parser.add_argument("--end_date", type = str, help = "End date of yahoo finance data extraction in YYYY-MM-DD format")
+    parser.add_argument("--tickers", nargs = "*", help = "List of tickers, separated by spaces. If not provided, will use default tickers from tbl_yfinance_tickers table")
 
     return parser.parse_args()
 
@@ -80,11 +90,16 @@ def validate_cli_args(args: argparse.Namespace, cursor: Cursor) -> Tuple[date, d
     return start_date, end_date, tickers
 
 def download_yfinance_data(start_date: date, end_date: date, tickers: List[str]) -> pd.DataFrame:
-    
+    """
+    Extracts end-of-day closing prices for list of tickers from yahoo finance API
+    Yahoo finance API excludes end_date's prices, so adjust the end_date to include end_date's data
+    """
+    adjusted_end_date = end_date + timedelta(days = 1)
+
     df_yahoo_finance_api = yf.download(
         tickers = tickers, 
         start = start_date, 
-        end = end_date, 
+        end = adjusted_end_date, 
         period = "1d", 
         group_by = "ticker")
     
