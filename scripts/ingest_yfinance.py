@@ -42,11 +42,21 @@ def get_cli_args() -> argparse.Namespace:
 
     return parser.parse_args()
 
-def validate_YYYY_MM_DD_format_and_not_in_future(date_str: Optional[str], date_name: str) -> Optional[date]:
+def validate_list_of_tickers_or_fetch_from_db(tickers: Optional[List[str]]) -> List[str]:
+
+    if tickers is None:
+        # TODO: get list of tickers from PostgreSQL database: tbl_yfinance_tickers then
+        pass
+
+    return tickers
+
+def validate_date_format_and_not_in_future_or_return_today(date_str: Optional[str], date_name: str) -> date:
     """
-    First verify that date is in valid YYYY-MM-DD format and then check that date is not in the future
+    If user provides no date, default to today's date. Otherwise, validate format and ensure not future.
     """
-    if date_str is not None:
+    if date_str is None:
+        output_date = datetime.today().date()
+    else:
         try:
             output_date = datetime.strptime(date_str, "%Y-%m-%d").date()
             if output_date > date.today():
@@ -55,26 +65,27 @@ def validate_YYYY_MM_DD_format_and_not_in_future(date_str: Optional[str], date_n
         except ValueError:
             print(f"{date_name} needs to be in YYYY-MM-DD format")
             sys.exit(1)
-    else:
-        output_date = None
     
     return output_date
 
-def validate_cli_args(args: argparse.Namespace) -> Tuple[Optional[date], Optional[date], List[str]]:
+def validate_start_date_less_than_or_equal_end_date(start_date: date, end_date: date) -> Tuple[date, date]:
+    
+    if end_date < start_date:
+        print("End date must be greater than, or equal to, start date.")
+        sys.exit(1)
+    
+    return start_date, end_date
+
+def validate_cli_args(args: argparse.Namespace) -> Tuple[date, date, List[str]]:
     """
     Validate args from CLI: start_date, end_date, and list of tickers.  Also, enforces that start_end <= end_date
     """
-    start_date = validate_YYYY_MM_DD_format_and_not_in_future(args.start_date, "Start date")
-    end_date = validate_YYYY_MM_DD_format_and_not_in_future(args.end_date, "End date")
+    start_date = validate_date_format_and_not_in_future_or_return_today(args.start_date, "Start date")
+    end_date = validate_date_format_and_not_in_future_or_return_today(args.end_date, "End date")
   
-    if (start_date is not None) and (end_date is not None) and (end_date < start_date):
-        print("End date must be greater than, or equal to, start date.")
-        sys.exit(1)
+    start_date, end_date = validate_start_date_less_than_or_equal_end_date(start_date, end_date)
 
-    if args.tickers is not None:
-        tickers = args.tickers
-    else:
-        tickers = []
+    tickers = validate_list_of_tickers_or_fetch_from_db(args.tickers)
     
     return start_date, end_date, tickers
     
