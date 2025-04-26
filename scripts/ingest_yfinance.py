@@ -42,28 +42,39 @@ def get_cli_args() -> argparse.Namespace:
 
     return parser.parse_args()
 
+def validate_YYYY_MM_DD_format_and_not_in_future(date_str: Optional[str], date_name: str) -> Optional[date]:
+    """
+    First verify that date is in valid YYYY-MM-DD format and then check that date is not in the future
+    """
+    if date_str is not None:
+        try:
+            output_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+            if output_date > date.today():
+                print(f"{date_name} cannot be in the future")
+                sys.exit(1)
+        except ValueError:
+            print(f"{date_name} needs to be in YYYY-MM-DD format")
+            sys.exit(1)
+    else:
+        output_date = None
+    
+    return output_date
+
 def validate_cli_args(args: argparse.Namespace) -> Tuple[Optional[date], Optional[date], List[str]]:
     """
-    Verify that start_date and end_date are YYYY-MM-DD format, end_date is greater than start_date, and end_date isn't in the future
-    TODO: Finish validate_cli_args function with Optional args
+    Validate args from CLI: start_date, end_date, and list of tickers.  Also, enforces that start_end <= end_date
     """
-    try:
-        start_date = datetime.strptime(args.start_date, "%Y-%m-%d").date()
-        end_date = datetime.strptime(args.end_date, "%Y-%m-%d").date()
-    except ValueError:
-        print("Start date and end date must be in YYYY-MM-DD format.")
-        sys.exit(1)
-    
-    if end_date < start_date:
+    start_date = validate_YYYY_MM_DD_format_and_not_in_future(args.start_date, "Start date")
+    end_date = validate_YYYY_MM_DD_format_and_not_in_future(args.end_date, "End date")
+  
+    if (start_date is not None) and (end_date is not None) and (end_date < start_date):
         print("End date must be greater than, or equal to, start date.")
         sys.exit(1)
 
-    if end_date > date.today():
-        # TODO: Handle case where end_date == today() but market hasn't closed yet (before 4 PM EST)
-        print("End date must be less than or equal to today.")
-        sys.exit(1)
-
-    tickers = args.tickers
+    if args.tickers is not None:
+        tickers = args.tickers
+    else:
+        tickers = []
     
     return start_date, end_date, tickers
     
