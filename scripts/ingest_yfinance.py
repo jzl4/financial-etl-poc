@@ -2,7 +2,9 @@
 import sys
 import os
 
+# /home/ubuntu/financial-etl-poc/scripts
 current_folder = os.path.dirname(__file__)
+# /home/ubuntu/financial-etl-poc/
 project_root_folder = os.path.abspath(os.path.join(current_folder, ".."))
 sys.path.append(project_root_folder)
 
@@ -119,7 +121,7 @@ def insert_yfinance_payload_by_date(df_yahoo_finance_api: pd.DataFrame, cursor: 
     
     n_rows = len(df_yahoo_finance_api.index)
 
-    print(f"Running insert_yfinance_payload_by_date with {n_rows}")
+    print(f"Running insert_yfinance_payload_by_date with {n_rows} rows of data")
 
     for timestamp in df_yahoo_finance_api.index:
 
@@ -159,6 +161,6 @@ def main():
 
     cursor.close()
     conn.close()
-
+    
 if __name__ == "__main__":
     main()
