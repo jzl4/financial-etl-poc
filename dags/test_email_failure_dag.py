@@ -2,12 +2,14 @@ from airflow import DAG
 from airflow.operators.python import PythonOperator
 from datetime import datetime, timedelta
 
+def log_failure(context):
+    with open("/opt/airflow/logs/failure_alerts.log", "a") as f:
+        f.write(f"[{datetime.now()}] DAG {context['dag'].dag_id} failed on task {context['task_instance'].task_id}\n")
+
 default_args = {
     "owner": "airflow",
+    "on_failure_callback": log_failure,
     "depends_on_past": False,
-    "email": ["joe.zhou.lu@gmail.com"],
-    "email_on_failure": True,
-    "email_on_retry": False,
     "retries": 0,
     "retry_delay": timedelta(minutes=5),
 }

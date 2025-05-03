@@ -3,11 +3,12 @@ version: '3'
 x-airflow-common:
   &airflow-common
   image: apache/airflow:2.8.1
+  env_file:
+  - .env
   environment:
     &airflow-env
     AIRFLOW__CORE__EXECUTOR: LocalExecutor
-    # TODO: Need to link my_rds_password to my env file somehow
-    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://joelu:<my_rds_password>@postgresql-db.cjsyoeie2jow.us-east-2.rds.amazonaws.com:5432/airflow
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://joelu:${rds_password}@postgresql-db.cjsyoeie2jow.us-east-2.rds.amazonaws.com:5432/airflow
     AIRFLOW__CORE__FERNET_KEY: ''
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
     AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
@@ -17,21 +18,8 @@ x-airflow-common:
     - ./logs:/opt/airflow/logs
     - ./plugins:/opt/airflow/plugins
   user: "${AIRFLOW_UID:-50000}:0"
-  depends_on:
-    - postgres
   
-  services:
-  postgres:
-    image: postgres:13
-    environment:
-      POSTGRES_USER: joelu
-      POSTGRES_PASSWORD: my_rds_password
-      POSTGRES_DB: postgres
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres-db-volume:/var/lib/postgresql/data
-    
+services:
   airflow-webserver:
     <<: *airflow-common
     command: webserver
@@ -53,6 +41,3 @@ x-airflow-common:
       retries: 5
       start_period: 30s
       timeout: 10s
-
-volumes:
-  postgres-db-volume:

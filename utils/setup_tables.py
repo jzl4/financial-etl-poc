@@ -1,7 +1,7 @@
 import os
 import sys
 
-# /home/ubuntu/financial-etl-poc/scripts
+# /home/ubuntu/financial-etl-poc/this_folder
 current_folder = os.path.dirname(__file__)
 # /home/ubuntu/financial-etl-poc/
 project_root_folder = os.path.abspath(os.path.join(current_folder, ".."))
