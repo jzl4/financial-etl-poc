@@ -8,7 +8,7 @@ x-airflow-common:
   environment:
     &airflow-env
     AIRFLOW__CORE__EXECUTOR: LocalExecutor
-    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://joelu:${rds_password}@postgresql-db.cjsyoeie2jow.us-east-2.rds.amazonaws.com:5432/airflow
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://joelu:${rds_password}@postgresql-db.cjsyoeie2jow.us-east-2.rds.amazonaws.com:5432/postgres
     AIRFLOW__CORE__FERNET_KEY: ''
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
     AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
@@ -17,6 +17,8 @@ x-airflow-common:
     - ./dags:/opt/airflow/dags
     - ./logs:/opt/airflow/logs
     - ./plugins:/opt/airflow/plugins
+    - ./scripts:/opt/airflow/scripts
+    - ./utils:/opt/airflow/utils
   user: "${AIRFLOW_UID:-50000}:0"
   
 services:
