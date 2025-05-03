@@ -1,3 +1,14 @@
+import os
+import sys
+
+# /home/ubuntu/financial-etl-poc/scripts
+current_folder = os.path.dirname(__file__)
+# /home/ubuntu/financial-etl-poc/
+project_root_folder = os.path.abspath(os.path.join(current_folder, ".."))
+sys.path.append(project_root_folder)
+# For loading credentials from .env under financial-etl-poc
+dotenv_path = os.path.join(project_root_folder, ".env")
+
 import psycopg2
 from psycopg2.extensions import connection as Connection
 from psycopg2.extensions import cursor as Cursor
@@ -71,7 +82,7 @@ def create_tbl_yfinance_tickers(cursor: Cursor, conn: Connection) -> None:
 def main_setup_tables():
 
     # Load .env file, which is required for connecting to AWS RDS
-    load_dotenv()
+    load_dotenv(dotenv_path)
     conn, cursor = connect_to_rds()
 
     create_tbl_api_payloads_yfinance_daily(cursor, conn)

@@ -7,6 +7,8 @@ current_folder = os.path.dirname(__file__)
 # /home/ubuntu/financial-etl-poc/
 project_root_folder = os.path.abspath(os.path.join(current_folder, ".."))
 sys.path.append(project_root_folder)
+# For loading credentials from .env under financial-etl-poc
+dotenv_path = os.path.join(project_root_folder, ".env")
 
 import argparse
 from datetime import datetime, date
@@ -147,7 +149,7 @@ def insert_yfinance_payload_by_date(df_yahoo_finance_api: pd.DataFrame, cursor: 
 def main():
 
     # Load .env file, which is required for connecting to AWS RDS
-    load_dotenv()
+    load_dotenv(dotenv_path)
     conn, cursor = connect_to_rds()
 
     # Get arguments from command line
