@@ -11,16 +11,15 @@ default_args = {
     "on_failure_callback": log_failure,
     "depends_on_past": False,
     "retries": 0,
-    "retry_delay": timedelta(minutes=5),
 }
 
 def fail_task():
-    raise Exception("This task fails intentionally for email alert testing!")
+    raise Exception("This task fails intentionally to verify that a failed DAG generates a log message")
 
 with DAG(
-    dag_id="test_email_failure_dag",
+    dag_id="test_failing_dag_gets_logged",
     default_args=default_args,
-    description="A simple DAG to test email alerts",
+    description="A simple DAG to test failure logging to local log file",
     schedule_interval=None,
     start_date=datetime(2024, 4, 27),
     catchup=False,

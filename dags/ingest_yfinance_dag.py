@@ -14,14 +14,16 @@ sys.path.append(project_root_folder)
 
 from scripts.ingest_yfinance import main as ingest_yfinance_main
 
+def log_failure(context):
+    with open("/opt/airflow/logs/failure_alerts.log", "a") as f:
+        f.write(f"[{datetime.now()}] DAG {context['dag'].dag_id} failed on task {context['task_instance'].task_id}\n")
+
 default_args = {
     "owner": "airflow",
+    "on_failure_callback": log_failure,
     "depends_on_past": False,
-    "email": ["Joe.Zhou.Lu@gmail.com"],
-    "email_on_failure": True,
-    "email_on_retry": False,
     "retries": 1,
-    "retry_delay": timedelta(minutes = 5)
+    "retry_delay": timedelta(seconds = 30)
 }
 
 with DAG(
