@@ -61,9 +61,15 @@ This project demonstrates my ability to:
 ## 📁 Repo Structure (Simplified)
 
 financial-etl-poc/
+
 ├── dags/ # Airflow DAG definitions
+
 ├── scripts/ # Python driver scripts (ingestion, transformation, etc.)
+
 ├── utils/ # Utility modules (e.g., db connectors)
+
 ├── docker/ # Dockerfiles and Airflow stack configs
+
 ├── notebook/ # Exploratory work & sanity checks
+
 └── README.md
