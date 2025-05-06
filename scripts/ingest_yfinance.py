@@ -21,7 +21,7 @@ import pandas as pd
 from dotenv import load_dotenv
 
 # Local project imports
-from utils.db_utils import *
+from utils.db_utils import connect_to_rds, sql_query_as_df
 from utils.general_utils import get_today_est
 
 def get_cli_args() -> argparse.Namespace:
@@ -107,6 +107,9 @@ def download_yfinance_data(start_date: date, end_date: date, tickers: List[str])
         end = adjusted_end_date, 
         period = "1d", 
         group_by = "ticker")
+
+    if df_yahoo_finance_api.empty:
+        raise ValueError(f"Yahoo Finance returned 0 rows. Start={start_date}, End={end_date}, Tickers={tickers}")
     
     return df_yahoo_finance_api
 
@@ -126,6 +129,7 @@ def insert_yfinance_payload_by_date(df_yahoo_finance_api: pd.DataFrame, cursor: 
 
     # TODO: Replace all of these print statements with proper Python logging (with the levels of logging)
     print(f"Running insert_yfinance_payload_by_date with {n_rows} rows of data")
+
 
     for timestamp in df_yahoo_finance_api.index:
 
