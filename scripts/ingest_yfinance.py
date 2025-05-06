@@ -22,6 +22,7 @@ from dotenv import load_dotenv
 
 # Local project imports
 from utils.db_utils import *
+from utils.general_utils import get_today_est
 
 def get_cli_args() -> argparse.Namespace:
     """
@@ -39,7 +40,7 @@ def validate_date_format_and_not_in_future_or_return_today(date_str: Optional[st
     If user provides no date, default to today's date. Otherwise, validate format and ensure not future.
     """
     if date_str is None:
-        output_date = datetime.today().date()
+        output_date = get_today_est()
     else:
         try:
             output_date = datetime.strptime(date_str, "%Y-%m-%d").date()
@@ -176,7 +177,7 @@ def main_airflow():
     load_dotenv(dotenv_path)
     conn, cursor = connect_to_rds()
 
-    today = datetime.today().date()
+    today = get_today_est()
     run_ingest(conn = conn, cursor = cursor, start_date = today, end_date = today)
 
 if __name__ == "__main__":

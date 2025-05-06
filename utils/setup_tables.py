@@ -15,7 +15,7 @@ from psycopg2.extensions import cursor as Cursor
 
 from dotenv import load_dotenv
 
-from db_utils import *
+from db_utils import connect_to_rds
 
 def create_tbl_api_payloads_yfinance_daily(cursor: Cursor, conn: Connection) -> None:
     """
