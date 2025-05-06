@@ -123,6 +123,7 @@ def insert_yfinance_payload_by_date(df_yahoo_finance_api: pd.DataFrame, cursor: 
     
     n_rows = len(df_yahoo_finance_api.index)
 
+    # TODO: Replace all of these print statements with proper Python logging (with the levels of logging)
     print(f"Running insert_yfinance_payload_by_date with {n_rows} rows of data")
 
     for timestamp in df_yahoo_finance_api.index:
@@ -146,23 +147,38 @@ def insert_yfinance_payload_by_date(df_yahoo_finance_api: pd.DataFrame, cursor: 
 
     conn.commit()
 
-def main():
-
-    # Load .env file, which is required for connecting to AWS RDS
-    load_dotenv(dotenv_path)
-    conn, cursor = connect_to_rds()
-
-    # Get arguments from command line
-    args = get_cli_args()
-    start_date, end_date, tickers = validate_cli_args(args, cursor)
+# Functionality for main shared by CLI run or Airflow run
+def run_ingest(conn: Connection, cursor: Cursor, start_date: date, end_date: date, tickers: Optional[List[str]] = None):
+    """
+    Shared logic for ingesting yfinance data, used by both CLI and Airflow.
+    """
+    tickers = validate_list_of_tickers_or_fetch_from_db(tickers, cursor)
 
     df_yahoo_finance_api = download_yfinance_data(start_date, end_date, tickers)
-    print(df_yahoo_finance_api.head(n = 5))
-
     insert_yfinance_payload_by_date(df_yahoo_finance_api, cursor, conn)
 
     cursor.close()
     conn.close()
+
+# If invoked directly through CLI: "python ingest_yfinance.py --start_date start_date --end_date end_date etc".  Only necessary if backfilling historical data manually
+def main_cli():
     
+    load_dotenv(dotenv_path)
+    conn, cursor = connect_to_rds()
+
+    args = get_cli_args()
+    start_date, end_date, tickers = validate_cli_args(args, cursor)
+    run_ingest(conn, cursor, start_date, end_date, tickers)
+
+# If invoked by Airflow, do not parse arguments due to Airflow passing in keywords "scheduler" and "webserver". Use default behavior for daily run
+def main_airflow():
+    
+    load_dotenv(dotenv_path)
+    conn, cursor = connect_to_rds()
+
+    today = datetime.today().date()
+    run_ingest(conn = conn, cursor = cursor, start_date = today, end_date = today)
+
 if __name__ == "__main__":
-    main()
+    main_cli()
+

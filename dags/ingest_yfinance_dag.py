@@ -12,7 +12,7 @@ current_folder = os.path.dirname(__file__)
 project_root_folder = os.path.abspath(os.path.join(current_folder, ".."))
 sys.path.append(project_root_folder)
 
-from scripts.ingest_yfinance import main as ingest_yfinance_main
+from scripts.ingest_yfinance import main_airflow as ingest_yfinance_main_airflow
 
 def log_failure(context):
     with open("/opt/airflow/logs/failure_alerts.log", "a") as f:
@@ -38,7 +38,7 @@ with DAG(
     
     run_ingest_yfinance = PythonOperator(
         task_id = "run_ingest_yfinance",
-        python_callable = ingest_yfinance_main
+        python_callable = ingest_yfinance_main_airflow
     )
 
     run_ingest_yfinance
