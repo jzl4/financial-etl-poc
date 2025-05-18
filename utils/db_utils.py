@@ -12,6 +12,7 @@ from typing import Tuple, List, Dict, Set, Any
 import psycopg2
 from psycopg2.extensions import connection as Connection
 from psycopg2.extensions import cursor as Cursor
+from psycopg2.extras import execute_values  # Bulk insertion of Pandas dataframes
 from psycopg2 import OperationalError, ProgrammingError, Error
 
 def connect_to_rds() -> Tuple[Connection, Cursor]:

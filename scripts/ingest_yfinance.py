@@ -21,7 +21,7 @@ import pandas as pd
 from dotenv import load_dotenv
 
 # Local project imports
-from utils.db_utils import connect_to_rds, sql_query_as_df
+from utils.db_utils import *
 from utils.general_utils import get_today_est
 
 def get_cli_args() -> argparse.Namespace:
@@ -141,6 +141,7 @@ def insert_yfinance_payload_by_date(df_yahoo_finance_api: pd.DataFrame, cursor: 
 
         business_date = timestamp.date()
 
+        # TODO: There is a possibility where we would want to run this driver explicitly to override existing price/volumes for a given (business_date) to correct a wrong json payload, so we need to change "do nothing" to instead prompt the user "What you are writing conflicts with existing data, do you want to override or skip?"
         cursor.execute(
             f"""
             INSERT INTO tbl_api_payloads_yfinance_daily (business_date, raw_payload)
