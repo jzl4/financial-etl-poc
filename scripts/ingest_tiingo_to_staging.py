@@ -101,7 +101,7 @@ def download_tiingo_data(start_date: date, end_date: date, tickers: List[str]) -
     """
     Downloads closing prices from Tiingo between start_date and end_date for list of tickers, and returns result as DataFrame
     """
-    # TODO: Need to handle case that an invalid ticker like BLAHBLAH was passed in and tiingo API call crashes out
+
     dfs = []
 
     for ticker in tickers:
@@ -117,20 +117,34 @@ def download_tiingo_data(start_date: date, end_date: date, tickers: List[str]) -
             "token": tiingo_api_token
         }
 
-        response = requests.get(url, headers=headers, params=params)
-        response.raise_for_status()  # always good for catching HTTP errors
+        # A single ticker could fail because the ticker is invalid
+        try:
+            response = requests.get(url, headers=headers, params=params)
+            response.raise_for_status()  # always good for catching HTTP errors
+        except requests.exceptions.HTTPError as e:
+            print(f"{e} due to invalid ticker {ticker}")
+            continue    # Skip rest of lines in this iteration, and continue to next ticker in tickers
 
-        # response.json is a list of dict, where each dict is price/volume/ratio data for one business_date
-        df_payloads_for_one_ticker_between_start_end_dates = pd.DataFrame(response.json())
+        # If no error, parse json into DataFrame
+        list_of_dict = response.json()  # Each dict is price/volume/ratio data for one business_date
+        df_payloads_for_one_ticker_between_start_end_dates = pd.DataFrame(list_of_dict)
+
+        # A single ticker could fail because there was no price/volume data in that date range
+        if df_payloads_for_one_ticker_between_start_end_dates.empty:
+            print(f"No data between {start_date} and {end_date} for ticker {ticker}")
+            continue    # Skip rest of lines in this iteration, and continue to next ticker in tickers
+
+        # If ticker is valid and data is found between start and end date, append to dfs (list of df)
         df_payloads_for_one_ticker_between_start_end_dates["ticker"] = ticker
-
         dfs.append(df_payloads_for_one_ticker_between_start_end_dates)
     
-    df = pd.concat(dfs, axis = 0)
-
-    if df.empty:
+    # If dfs is an empty list (all tickers return no data)
+    if not dfs:
         print(f"Zero rows returned when downloading data from Tiingo between {start_date} and {end_date} for {tickers}")
         sys.exit(1)
+    # Otherwise, stack the data from various tickers on top of each other
+    else:
+        df = pd.concat(dfs, axis = 0)
 
     return df
 
