@@ -14,6 +14,7 @@ sys.path.append(project_root_folder)
 # Import functionalities from other modules in this project
 from utils.db_utils import *
 from utils.general_utils import get_today_est
+from psycopg2 import extras
 
 # Load .env file for AWS RDS login credentials and Tiingo API token
 dotenv_path = os.path.join(project_root_folder, ".env")
@@ -148,6 +149,73 @@ def download_tiingo_data(start_date: date, end_date: date, tickers: List[str]) -
 
     return df
 
+def format_tiingo_data(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Convert dataframe of Tiingo API results into proper format, to match tbl_tiingo_daily_staging table format
+    """
+    
+    # Convert datetime to date
+    df["date"] = pd.to_datetime(df["date"]).dt.date
+
+    # Rename columns
+    df = df.rename(columns = {
+        "date": "business_date",
+        "adjClose": "adj_close",
+        "adjHigh": "adj_high",
+        "adjLow": "adj_low",
+        "adjOpen": "adj_open",
+        "adjVolume": "adj_volume",
+        "divCash": "div_cash",
+        "splitFactor": "split_factor"
+    })
+
+    # Reorder columns
+    columns = [
+        "ticker", "business_date",  # Primary keys
+        "open", "low", "high", "close", "volume",   # Raw fields
+        "adj_open", "adj_low", "adj_high", "adj_close", "adj_volume",   # Adjusted fields
+        "div_cash", "split_factor"  # Corporate actions
+    ]
+    df = df[columns]
+
+    return df
+
+def insert_into_tiingo_daily_staging(df: pd.DataFrame, cursor, conn):
+    """
+    Inserts data into tbl_tiingo_daily_staging table
+    """
+    # How to convert from dataframe into list of tuples
+    values = list(df.itertuples(index = False, name = None))
+
+    # Use execute_values to insert into tbl_tiingo_daily_staging
+    insert_query = """
+    INSERT INTO tbl_tiingo_daily_staging (
+        ticker, business_date, open, low, high, close, volume,
+        adj_open, adj_low, adj_high, adj_close, adj_volume,
+        div_cash, split_factor     
+    )
+    VALUES %s
+    ON CONFLICT (ticker, business_date) DO UPDATE SET
+        open = EXCLUDED.open,
+        low = EXCLUDED.low,
+        high = EXCLUDED.high,
+        close = EXCLUDED.close,
+        volume = EXCLUDED.volume,
+        adj_open = EXCLUDED.adj_open,
+        adj_low = EXCLUDED.adj_low,
+        adj_high = EXCLUDED.adj_high,
+        adj_close = EXCLUDED.adj_close,
+        adj_volume = EXCLUDED.adj_volume,
+        div_cash = EXCLUDED.div_cash,
+        split_factor = EXCLUDED.split_factor,
+        ingestion_ts = now(),
+        source = 'Tiingo';        
+    """
+
+    extras.execute_values(cursor, insert_query, values)
+    conn.commit()
+    print(f"✅ Bulk inserted/updated {len(df)} rows into tbl_tiingo_daily_staging.")
+
 def main_cli():
 
     # Load AWS RDS credentials from .env and connect to database
@@ -158,7 +226,12 @@ def main_cli():
     start_date, end_date, tickers = validate_cli_args(args, cursor)
     # TODO
 
+def main_airflow():
+    # TODO
+    pass
+
 if __name__ == "__main__":
+    # TODO
     args = get_cli_args()
     # print(args.start_date)
     # print(args.end_date)
