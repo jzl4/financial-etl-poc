@@ -111,6 +111,10 @@ def download_tiingo_data(start_date: date, end_date: date, tickers: List[str]) -
     for ticker in tickers:
         url = f"https://api.tiingo.com/tiingo/daily/{ticker}/prices"
 
+        # TODO: remove token from params and move into headers. (Does Tiingo's doc suggest this as best practice?)
+        # TODO: Use requests.Session() object for better performance, to reuse TCP connections.  Ex:
+        #   session = requests.Session()
+        #   response = session.get(url, headers, params)
         headers = {'Content-Type': 'application/json'}
 
         params = {
