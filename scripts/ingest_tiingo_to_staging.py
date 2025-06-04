@@ -17,10 +17,13 @@ from utils.general_utils import get_today_est
 from psycopg2 import extras
 
 # Load .env file for AWS RDS login credentials and Tiingo API token
-dotenv_path = os.path.join(project_root_folder, ".env")
 from dotenv import load_dotenv
-tiingo_api_token = os.getenv("tiingo_api_token")
+dotenv_path = os.path.join(project_root_folder, ".env")
+load_dotenv(dotenv_path)
 
+# Global variables
+conn, cursor = connect_to_rds() # Connect to AWS RDS
+tiingo_api_token = os.getenv("tiingo_api_token")    # Token for using Tiingo API
 today = get_today_est()
 
 def get_cli_args() -> argparse.Namespace:
@@ -222,17 +225,14 @@ def main_shared(start_date: date, end_date: date, tickers: List[str], conn: Conn
     """
     Shared functionality between main_cli() and main_airflow() to download Tiingo data, format it, and insert into staging table tbl_tiingo_daily_staging
     """
-    df = download_tiingo_data(start_date, end_date, tickers)
-    df = format_tiingo_data(df)
-    insert_into_tiingo_daily_staging(df, cursor, conn)
+    df_tiingo_raw = download_tiingo_data(start_date, end_date, tickers)
+    df_tiingo_formatted = format_tiingo_data(df_tiingo_raw)
+    insert_into_tiingo_daily_staging(df_tiingo_formatted, cursor, conn)
 
 def main_cli():
     """
     Main function for manual run via CLI. Useful for backfilling historical prices for multiple securites and/or correcting data
     """
-    # Load AWS RDS credentials from .env and connect to database
-    load_dotenv(dotenv_path)
-    conn, cursor = connect_to_rds()
 
     args = get_cli_args()
     start_date, end_date, user_provided_tickers = validate_cli_args(args, cursor)
@@ -242,9 +242,6 @@ def main_airflow():
     """
     Main function used by Airflow to run daily EOD job, to pull that day's closing stock prices
     """
-    # Load AWS RDS credentials from .env and connect to database
-    load_dotenv(dotenv_path)
-    conn, cursor = connect_to_rds()
 
     active_tickers = validate_list_of_tickers_or_fetch_from_db(None, cursor)
     main_shared(today, today, active_tickers, conn, cursor)
