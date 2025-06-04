@@ -147,6 +147,8 @@ def download_tiingo_data(start_date: date, end_date: date, tickers: List[str]) -
     else:
         df = pd.concat(dfs, axis = 0)
 
+    print(f"{len(df)} rows returned from Tiingo API call")
+
     return df
 
 def format_tiingo_data(df: pd.DataFrame) -> pd.DataFrame:
@@ -216,23 +218,37 @@ def insert_into_tiingo_daily_staging(df: pd.DataFrame, cursor, conn):
     conn.commit()
     print(f"✅ Bulk inserted/updated {len(df)} rows into tbl_tiingo_daily_staging.")
 
-def main_cli():
+def main_shared(start_date: date, end_date: date, tickers: List[str], conn: Connection, cursor: Cursor) -> None:
+    """
+    Shared functionality between main_cli() and main_airflow() to download Tiingo data, format it, and insert into staging table tbl_tiingo_daily_staging
+    """
+    df = download_tiingo_data(start_date, end_date, tickers)
+    df = format_tiingo_data(df)
+    insert_into_tiingo_daily_staging(df, cursor, conn)
 
+def main_cli():
+    """
+    Main function for manual run via CLI. Useful for backfilling historical prices for multiple securites and/or correcting data
+    """
     # Load AWS RDS credentials from .env and connect to database
     load_dotenv(dotenv_path)
     conn, cursor = connect_to_rds()
 
     args = get_cli_args()
-    start_date, end_date, tickers = validate_cli_args(args, cursor)
-    # TODO
+    start_date, end_date, user_provided_tickers = validate_cli_args(args, cursor)
+    main_shared(start_date, end_date, user_provided_tickers, conn, cursor)
 
 def main_airflow():
-    # TODO
-    pass
+    """
+    Main function used by Airflow to run daily EOD job, to pull that day's closing stock prices
+    """
+    # Load AWS RDS credentials from .env and connect to database
+    load_dotenv(dotenv_path)
+    conn, cursor = connect_to_rds()
 
+    active_tickers = validate_list_of_tickers_or_fetch_from_db(None, cursor)
+    main_shared(today, today, active_tickers, conn, cursor)
+  
 if __name__ == "__main__":
-    # TODO
-    args = get_cli_args()
-    # print(args.start_date)
-    # print(args.end_date)
-    # print(args.tickers)
+    # By default, this driver should run the CLI version. Airflow job will be invoked in DAGs
+    main_cli()

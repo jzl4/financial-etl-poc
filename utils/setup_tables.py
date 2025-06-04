@@ -42,7 +42,7 @@ def create_tbl_tiingo_daily_staging(cursor: Cursor, conn: Connection) -> None:
     """
 
     create_tbl_tiingo_daily_staging_query = """
-    CREATE TABLE IF NOT EXISTS   tbl_tiingo_daily_staging (
+    CREATE TABLE IF NOT EXISTS tbl_tiingo_daily_staging (
         ticker TEXT NOT NULL,
         business_date DATE NOT NULL,
         open FLOAT,
