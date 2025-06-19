@@ -1,0 +1,3 @@
+# TODO: Need to create a DQ folder and add a lot of checks in there: price positive, change over day, etc. Check for stock split issues where adjusted price ratio on a stock split is similar to the stock split ratio, negative dividends, etc.
+
+# TODO: Verify that the adjusted prices that I've calculated in staging_to_prod indeed match the adj_prices from Tiingo's API.  They should tie out down to the cent
