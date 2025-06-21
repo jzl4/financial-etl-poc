@@ -22,9 +22,36 @@ load_dotenv(dotenv_path)
 conn, cursor = connect_to_rds()
 today = get_today_est()
 
-# TODO: We need a function that pulls fields from staging table as a dataframe for a given stock/ticker, between start_date and end_date
+def extract_raw_data_from_staging(start_date: date, end_date: date, tickers: List[str], cursor: Cursor, conn: Connection):
+    """
+    Given start_date, end_date, and list of tickers, extract raw/unadjusted price & volume data from tbl_tiingo_daily_staging, as a Pandas dataframe
+    """
+
+    # Example: 'SPY','GLD'
+    ticker_list_as_str = "'" + "','".join(ticker for ticker in tickers) + "'"
+
+    query = f"""
+    select
+        ticker, business_date,
+        open, high, low, close, volume,
+        div_cash, split_factor
+    from tbl_tiingo_daily_staging
+    where business_date between '{start_date}' and '{end_date}' and ticker in ({ticker_list_as_str})
+    order by ticker, business_date;
+    """
+
+    df = sql_query_as_df(query, cursor)
+    return df
 
 def adj_corp_actions_for_one_stock(df_ticker: pd.DataFrame) -> pd.DataFrame:
+    """
+    Given a dataframe of raw/unadjusted price history for a single ticker, sorted by business_date, iterate from oldest business_date to most recent business_date, using dividend payment and stock split ratio information, to calculate adjusted fields that reflect the true return an investor holding the stock would have earned. Dataframe must contain columns:
+    - Business_date: business_date (ascending / from oldest to newest)
+    - Unadjusted fields: open (opening price), high (high price), low (low price), close (closing price), volume
+    - Dollar of dividends paid that day: div_cash. 0 = no dividend that day (default), 1 = $1 dividend was paid out that day, etc.
+    - Stock split ratio: split_factor. 1 = no stock split that day (default), 2 = a stock of $100 split into 2 shares of $50 that date, etc.
+    Returns dataframe with additional columns: adj_open, adj_high, adj_low, adj_close, adj_volume
+    """
 
     # TODO: I need to actually test this and validate that it works on Tingo's stock price data for at least one stock for a few business_date
 
@@ -67,6 +94,13 @@ def adj_corp_actions_for_one_stock(df_ticker: pd.DataFrame) -> pd.DataFrame:
 # group_keys = False to avoid multi-layer index, i.e. - to keep rows keyed on (ticker, business_date)
 # include_groups = True to include ticker as a column in the resulting output dataframe. If false, ticker will not appear in result
 def adj_corp_actions(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Applies function adj_corp_actions_for_one_stock to multiple stocks. Input dataframe df must contain columns:
+    - Keys: ticker, business_date
+    - Unadjusted fields: open (opening price), high (high price), low (low price), close (closing price), volume
+    - Dollar of dividends paid that day: div_cash. 0 = no dividend that day (default), 1 = $1 dividend was paid out that day, etc.
+    - Stock split ratio: split_factor. 1 = no stock split that day (default), 2 = a stock of $100 split into 2 shares of $50 that date, etc.
+    """
     result = df.groupby("ticker", group_keys = False).apply(adj_corp_actions_for_one_stock, include_groups = True)
     return result
 
@@ -75,8 +109,10 @@ def adj_corp_actions(df: pd.DataFrame) -> pd.DataFrame:
 # TODO: We need to write to prod table afterward using psycopg2.  Need to define table schema and then add it to setup_tables.py
 
 def main_staging_to_prod(start_date: date, end_date: date, tickers: List[str], conn: Connection, cursor: Cursor) -> None:
-    # TODO: get data from staging table (extract)
-    # TODO: transform using adj_corp_actions
+    
+    df_raw = extract_raw_data_from_staging(start_date, end_date, tickers, cursor, conn)
+    df_adj = adj_corp_actions(df_raw)
+
     # TODO: calculate daily returns (DoD % change in closing prices)
     # TODO: load into prod table
     pass
