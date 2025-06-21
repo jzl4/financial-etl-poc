@@ -22,7 +22,6 @@ from utils.argparse_utils import *
 from psycopg2 import extras
 
 # Global variables
-conn, cursor = connect_to_rds() # Connect to AWS RDS
 tiingo_api_token = os.getenv("tiingo_api_token")    # Token for using Tiingo API
 today = get_today_est()
 
@@ -162,18 +161,28 @@ def main_cli():
     """
     Main function for manual run via CLI. Useful for backfilling historical prices for multiple securites and/or correcting data
     """
-
-    args = get_cli_args()
-    start_date, end_date, user_provided_tickers = validate_cli_args(args, cursor)
-    main_shared(start_date, end_date, user_provided_tickers, conn, cursor)
+    conn, cursor = connect_to_rds()
+    try:
+        args = get_cli_args()
+        start_date, end_date, user_provided_tickers = validate_cli_args(args, cursor)
+        main_shared(start_date, end_date, user_provided_tickers, conn, cursor)
+    except Exception as e:
+        print(f"Exception in main_cli: {e}")
+    finally:
+        conn.close()
 
 def main_airflow():
     """
     Main function used by Airflow to run daily EOD job, to pull that day's closing stock prices
     """
-
-    active_tickers = validate_list_of_tickers_or_fetch_from_db(None, cursor)
-    main_shared(today, today, active_tickers, conn, cursor)
+    conn, cursor = connect_to_rds()
+    try:
+        active_tickers = validate_list_of_tickers_or_fetch_from_db(None, cursor)
+        main_shared(today, today, active_tickers, conn, cursor)
+    except Exception as e:
+        print(f"Exception in main_airflow: {e}")
+    finally:
+        conn.close()
   
 if __name__ == "__main__":
     # By default, this driver should run the CLI version. Airflow job will be invoked in DAGs
