@@ -9,16 +9,17 @@ import requests
 current_folder = os.path.dirname(__file__)
 project_root_folder = os.path.abspath(os.path.join(current_folder, ".."))
 sys.path.append(project_root_folder)
-# Import functionalities from other modules in this project
-from utils.db_utils import *
-from utils.datetime_utils import get_today_est
-from utils.argparse_utils import *
-from psycopg2 import extras
 
 # Load .env file for AWS RDS login credentials and Tiingo API token
 from dotenv import load_dotenv
 dotenv_path = os.path.join(project_root_folder, ".env")
 load_dotenv(dotenv_path)
+
+# Import functionalities from other modules in this project
+from utils.db_utils import *
+from utils.datetime_utils import get_today_est
+from utils.argparse_utils import *
+from psycopg2 import extras
 
 # Global variables
 conn, cursor = connect_to_rds() # Connect to AWS RDS

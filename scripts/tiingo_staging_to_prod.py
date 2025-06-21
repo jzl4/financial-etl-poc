@@ -101,19 +101,46 @@ def adj_corp_actions(df: pd.DataFrame) -> pd.DataFrame:
     - Dollar of dividends paid that day: div_cash. 0 = no dividend that day (default), 1 = $1 dividend was paid out that day, etc.
     - Stock split ratio: split_factor. 1 = no stock split that day (default), 2 = a stock of $100 split into 2 shares of $50 that date, etc.
     """
+
+    # TODO: This might not be necessary because I already sort by (ticker, business_date) in extract_raw_data_from_staging
+    df.sort_values(["ticker", "business_date"], inplace = True)
+
     result = df.groupby("ticker", group_keys = False).apply(adj_corp_actions_for_one_stock, include_groups = True)
     return result
 
-# TODO: We need a function that calculates daily (DoD) returns given adjusted prices.  Probably only need to apply this onto the closing prices for now
+def calculate_daily_returns(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Given a dataframe of raw/unadjusted price history for a single ticker, sorted by business_date, iterate from oldest business_date to most recent business_date, using dividend payment and stock split ratio information, to calculate adjusted fields that reflect the true return an investor holding the stock would have earned. Dataframe must contain columns:
+    - Business_date: business_date (ascending / from oldest to newest)
+    - Unadjusted fields: open (opening price), high (high price), low (low price), close (closing price), volume
+    - Dollar of dividends paid that day: div_cash. 0 = no dividend that day (default), 1 = $1 dividend was paid out that day, etc.
+    - Stock split ratio: split_factor. 1 = no stock split that day (default), 2 = a stock of $100 split into 2 shares of $50 that date, etc.
+    Returns dataframe with additional columns: adj_open, adj_high, adj_low, adj_close, adj_volume
+    """
 
-# TODO: We need to write to prod table afterward using psycopg2.  Need to define table schema and then add it to setup_tables.py
+    """
+    Calculate daily percentage change for adj_open, adj_close, adj_volume, over business_date, for each ticker in df
+    """
+
+    # TODO: This might not be necessary because I already sort by (ticker, business_date) in extract_raw_data_from_staging
+    df.sort_values(["ticker", "business_date"], inplace = True)
+
+    cols = ["adj_open", "adj_close", "adj_volume"]
+
+    for col in cols:
+        df[f"{col}_pct_chg"] = df.groupby("ticker")[col].pct_change()
+        df[f"{col}_pct_chg"]  = 100 * df[f"{col}_pct_chg"]
+
+    return df
+
+# TODO: We need to write to prod table afterward using psycopg2.  
 
 def main_staging_to_prod(start_date: date, end_date: date, tickers: List[str], conn: Connection, cursor: Cursor) -> None:
     
     df_raw = extract_raw_data_from_staging(start_date, end_date, tickers, cursor, conn)
     df_adj = adj_corp_actions(df_raw)
+    df_adj_returns = calculate_daily_returns(df_adj)
 
-    # TODO: calculate daily returns (DoD % change in closing prices)
     # TODO: load into prod table
     pass
 

@@ -68,6 +68,32 @@ def create_tbl_tiingo_daily_staging(cursor: Cursor, conn: Connection) -> None:
     
     print("Ran create_tbl_tiingo_daily_staging")
 
+def create_tbl_daily_prod(cursor: Cursor, conn: Connection) -> None:
+    """
+    Create the table tbl_daily_prod, which is the prod/gold table for daily prices from Tiingo (and possibly other future APIs)
+    """
+
+    create_tbl_daily_prod_query = """
+    CREATE TABLE IF NOT EXISTS tbl_daily_prod (
+        ticker TEXT NOT NULL,
+        business_date DATE NOT NULL,
+        adj_open FLOAT,
+        adj_close FLOAT,
+        adj_volume FLOAT,
+        adj_open_pct_chg FLOAT,
+        adj_close_pct_chg FLOAT,
+        adj_volume_pct_chg FLOAT,
+        ingestion_ts TIMESTAMPTZ DEFAULT now(),
+        source TEXT DEFAULT 'Tiingo',
+        PRIMARY KEY (ticker, business_date)
+    );
+    """
+
+    cursor.execute(create_tbl_daily_prod_query)
+    conn.commit()
+
+    print("Ran create_tbl_daily_prod")
+
 def main_setup_tables():
 
     # Load .env file, which is required for connecting to AWS RDS
@@ -76,6 +102,7 @@ def main_setup_tables():
 
     create_tbl_active_tickers(cursor, conn)
     create_tbl_tiingo_daily_staging(cursor, conn)
+    create_tbl_daily_prod(cursor, conn)
 
 if __name__ == "__main__":
     main_setup_tables()
