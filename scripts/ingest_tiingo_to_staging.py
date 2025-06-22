@@ -168,6 +168,7 @@ def main_cli():
         main_shared(start_date, end_date, user_provided_tickers, conn, cursor)
     except Exception as e:
         print(f"Exception in main_cli: {e}")
+        sys.exit(1)
     finally:
         conn.close()
 
@@ -181,6 +182,7 @@ def main_airflow():
         main_shared(today, today, active_tickers, conn, cursor)
     except Exception as e:
         print(f"Exception in main_airflow: {e}")
+        sys.exit(1)
     finally:
         conn.close()
   
