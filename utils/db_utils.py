@@ -15,6 +15,7 @@ from psycopg2.extensions import cursor as Cursor
 from psycopg2.extras import execute_values  # Bulk insertion of Pandas dataframes
 from psycopg2 import OperationalError, ProgrammingError, Error
 
+# TODO: Need to move connect_to_rds inside of sql_query_as_df. Reason: if I connect once at the beginning of a driver or a Jupyter notebook, and I execute a bad query, it breaks the connection and I need to go back up to the top to re-initialize it. In reality, I can initialize a new connection (or re-use an existing conn) to avoid statefulness and cursor issues
 def connect_to_rds() -> Tuple[Connection, Cursor]:
     """
     Connect to the PostgreSQL database on AWS RDS and return the connection and cursor objects
