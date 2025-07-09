@@ -18,7 +18,7 @@ load_dotenv(dotenv_path)
 # Import functionalities from other modules in this project
 from utils.db_utils import *
 from utils.datetime_utils import get_today_est
-from utils.argparse_utils import *
+from utils.etl_argparse_utils import *
 from psycopg2 import extras
 
 # Global variables
@@ -163,8 +163,8 @@ def main_cli():
     """
     conn, cursor = connect_to_rds()
     try:
-        args = get_cli_args()
-        start_date, end_date, user_provided_tickers = validate_cli_args(args, cursor)
+        args = get_etl_cli_args()
+        start_date, end_date, user_provided_tickers = validate_etl_cli_args(args, cursor)
         main_shared(start_date, end_date, user_provided_tickers, conn, cursor)
     except Exception as e:
         print(f"Exception in main_cli: {e}")

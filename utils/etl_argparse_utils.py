@@ -16,7 +16,7 @@ from utils.datetime_utils import get_today_est
 conn, cursor = connect_to_rds()
 today = get_today_est()
 
-def get_cli_args() -> argparse.Namespace:
+def get_etl_cli_args() -> argparse.Namespace:
     """
     Get CLI arguments start_date, end_date, and list of tickers, for extracting end-of-day data from Tiingo API
     """
@@ -78,7 +78,7 @@ def validate_list_of_tickers_or_fetch_from_db(tickers: Optional[List[str]], curs
 
     return tickers
 
-def validate_cli_args(args: argparse.Namespace, cursor: Cursor) -> Tuple[date, date, List[str]]:
+def validate_etl_cli_args(args: argparse.Namespace, cursor: Cursor) -> Tuple[date, date, List[str]]:
     """
     Validate args from CLI: start_date, end_date, and list of tickers.  Also, enforces that start_end <= end_date
     """
