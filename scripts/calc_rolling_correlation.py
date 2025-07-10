@@ -89,8 +89,6 @@ def validate_n_months(n_months: Optional[int]) -> int:
         print("n_months must be a positive integer, such as 1, 3, etc.")
         sys.exit(1)
 
-# TODO: Create a function that pulls returns for these two assets between min_start_date and max_start_date
-# TODO: It should give user a warning if the min(business_date of 2 assets) > min_end_date, i.e. - "You asked for data going back to 2020-01, but actually these two assets only have data going back to 2021-05", or if max(business_date of 2 assets) < max_end_date, i.e. - "You asked for data as recent as today, but these assets only have data going up to 2 months ago"
 def get_daily_asset_returns(asset_1: str, asset_2: str, min_start_date: date, max_end_date: date) -> pd.DataFrame:
 
     returns_query = f"""
@@ -121,16 +119,18 @@ def get_daily_asset_returns(asset_1: str, asset_2: str, min_start_date: date, ma
     
     if max_returns_date > max_end_date:
         print(f"Warning: You asked for returns data going up to {max_end_date}, but returns data only goes up to {max_end_date}")
+    
+    conn.close()
 
     return asset_1, asset_2, df_daily_returns
 
-def calc_rolling_correlation(asset_1: str, asset_2: str, df_returns: pd.DataFrame, n_months: int) -> pd.DataFrame:
+def calc_rolling_correlation(asset_1: str, asset_2: str, df_daily_returns: pd.DataFrame, n_months: int) -> pd.DataFrame:
     
     # First verify that the min_business_date and max_business_date are separated by more than n_months.  If not, crash the program
 
     # Now we loop backwards from most recent to most distance past
     # df_returns has 3 columns: business_date, asset_1_returns, asset_2_returns
-    business_dates = df_returns["business_date"]
+    business_dates = df_daily_returns["business_date"]
     business_dates_to_correlations = []
 
     for end_date in business_dates:
@@ -142,8 +142,8 @@ def calc_rolling_correlation(asset_1: str, asset_2: str, df_returns: pd.DataFram
 
         if start_date in business_dates:
 
-            df_between_start_end_date = df_returns.loc[
-                (start_date <= df_returns["business_date"]) & (df_returns["business_date"] <= end_date)
+            df_between_start_end_date = df_daily_returns.loc[
+                (start_date <= df_daily_returns["business_date"]) & (df_daily_returns["business_date"] <= end_date)
             ]
 
             corr = df_between_start_end_date["asset_1_returns"].corr(df_between_start_end_date["asset_2_returns"])
