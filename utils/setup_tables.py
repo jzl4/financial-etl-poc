@@ -94,6 +94,28 @@ def create_tbl_daily_prod(cursor: Cursor, conn: Connection) -> None:
 
     print("Ran create_tbl_daily_prod")
 
+def create_tbl_rolling_correlations(cursor: Cursor, conn: Connection) -> None:
+    """
+    Create the table tbl_rolling_correlations, which is keyed on (ticker_1, ticker_2, n_months, business_date)
+    """
+
+    create_tbl_rolling_correlations_query = """
+    CREATE TABLE IF NOT EXISTS tbl_rolling_correlations (
+        ticker_1 TEXT NOT NULL,
+        ticker_2 TEXT NOT NULL,
+        n_months INT NOT NULL,
+        business_date DATE NOT NULL,
+        correlation FLOAT,
+        updated_datetime TIMESTAMPTZ DEFAULT now(),
+        PRIMARY KEY (ticker_1, ticker_2, n_months, business_date)
+    );
+    """
+
+    cursor.execute(create_tbl_rolling_correlations_query)
+    conn.commit()
+
+    print("Ran create_tbl_rolling_correlations")
+
 def main_setup_tables():
 
     # Load .env file, which is required for connecting to AWS RDS
@@ -103,6 +125,7 @@ def main_setup_tables():
     create_tbl_active_tickers(cursor, conn)
     create_tbl_tiingo_daily_staging(cursor, conn)
     create_tbl_daily_prod(cursor, conn)
+    create_tbl_rolling_correlations(cursor, conn)
 
 if __name__ == "__main__":
     main_setup_tables()

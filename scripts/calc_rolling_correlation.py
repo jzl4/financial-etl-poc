@@ -5,14 +5,20 @@ import pandas as pd
 from typing import Optional, Tuple, List
 from datetime import datetime, date
 from dateutil.relativedelta import relativedelta
+from psycopg2 import extras
 
 # Required to import other modules from this project
 current_folder = os.path.dirname(__file__)
-project_root_path = os.path.abspath(os.path.join(current_folder, ".."))
-sys.path.append(project_root_path)
+project_root_folder = os.path.abspath(os.path.join(current_folder, ".."))
+sys.path.append(project_root_folder)
 # Import functionalities from other modules in this project
 from utils.db_utils import *
 from utils.datetime_utils import get_today_est
+
+# Load .env file for AWS RDS login credentials and Tiingo API token
+from dotenv import load_dotenv
+dotenv_path = os.path.join(project_root_folder, ".env")
+load_dotenv(dotenv_path)
 
 # Global variables
 today = get_today_est()
@@ -115,49 +121,51 @@ def get_daily_asset_returns(asset_1: str, asset_2: str, min_start_date: date, ma
     max_returns_date = max(df_daily_returns["business_date"])
 
     if min_returns_date > min_start_date:
-        print(f"Warning: You asked for returns data going back to {min_start_date}, but returns data only goes back to {min_returns_date}")
+        print(f"Warning: Your input requires returns data going back to {min_start_date}, but returns data only goes back to {min_returns_date}")
     
     if max_returns_date > max_end_date:
-        print(f"Warning: You asked for returns data going up to {max_end_date}, but returns data only goes up to {max_end_date}")
+        print(f"Warning: Your input requires returns data going up to {max_end_date}, but returns data only goes up to {max_end_date}")
     
     conn.close()
 
     return asset_1, asset_2, df_daily_returns
 
-def calc_rolling_correlation(asset_1: str, asset_2: str, df_daily_returns: pd.DataFrame, n_months: int) -> pd.DataFrame:
-    
-    # First verify that the min_business_date and max_business_date are separated by more than n_months.  If not, crash the program
+def calc_rolling_correlation(ticker_1: str, ticker_2: str, df_daily_returns: pd.DataFrame, n_months: int) -> pd.DataFrame:
 
-    # Now we loop backwards from most recent to most distance past
-    # df_returns has 3 columns: business_date, asset_1_returns, asset_2_returns
     business_dates = df_daily_returns["business_date"]
+    min_business_date = min(business_dates)
+
     business_dates_to_correlations = []
 
     for end_date in business_dates:
 
-        # For a given end_date, attempt to get the start_date of the correlation calculation.  If it is earlier than the oldest date, continue to the next end_date
+        # Given the end_date of the correlation calculation, get n_months before
         n_months_before_end_date = end_date - relativedelta(months = n_months)
-        # TODO: We could also do: max([d for d in business_dates if d <= n_months_before_end_date]). Not a big difference either way
-        start_date = min([d for d in business_dates if d >= n_months_before_end_date])
 
-        if start_date in business_dates:
+        # Check that n_months before that end_date is actually among business_dates
+        if n_months_before_end_date >= min_business_date:
 
+            # If so, get the most recent business_date that is less than, or equal to, n_months_before_end_date => our start_date
+            start_date = max([d for d in business_dates if d <= n_months_before_end_date])
+
+            # Filter returns only to those between our start_date and end_date and calculate the correlation in this n_month window
             df_between_start_end_date = df_daily_returns.loc[
                 (start_date <= df_daily_returns["business_date"]) & (df_daily_returns["business_date"] <= end_date)
             ]
 
             corr = df_between_start_end_date["asset_1_returns"].corr(df_between_start_end_date["asset_2_returns"])
-
+            
             business_date_to_correlation = {
-                "asset_1": asset_1,
-                "asset_2": asset_2,
+                "ticker_1": ticker_1,
+                "ticker_2": ticker_2,
                 "n_months": n_months,
-                "end_date": end_date,
+                "business_date": end_date,
                 "correlation": corr
             }
 
             business_dates_to_correlations.append(business_date_to_correlation)
 
+        # If we are here, it means that end_date is too far back, and n_months before end_date falls off business_dates range. We won't have n_months of historical data to compute correlation for this end_date, so skip to next end_date
         else:
             continue
     
@@ -166,10 +174,40 @@ def calc_rolling_correlation(asset_1: str, asset_2: str, df_daily_returns: pd.Da
 
     return df_correlation_time_series
     
-# TODO: Insert into dataframe table.  This table will hook up with end-back (FastAPI) and then later front-end (React) to create a correlation dashboard.  Use insert_into_tiingo_daily_staging as a template for the insertion code
-def insert_rolling_correlation_to_db(df_rolling_correlations: pd.DataFrame):
+def insert_rolling_correlation_to_db(df_correlation_time_series: pd.DataFrame):
 
-    pass
+    # Ensure the correct columns are in the correct order
+    df_correlation_time_series_ordered = df_correlation_time_series[
+        ["ticker_1", "ticker_2", "n_months", "business_date", "correlation"]
+    ]
+
+    data = list(df_correlation_time_series_ordered.itertuples(index = False, name = None))
+
+    query = """
+    INSERT INTO tbl_rolling_correlations (
+        ticker_1,
+        ticker_2,
+        n_months,
+        business_date,
+        correlation
+    )
+    VALUES %s
+    ON CONFLICT (ticker_1, ticker_2, n_months, business_date) DO UPDATE SET
+        correlation = EXCLUDED.correlation,
+        updated_datetime = now()
+    """
+
+    conn, cursor = connect_to_rds()
+
+    try:
+        extras.execute_values(cursor, query, data)
+        conn.commit()
+        print(f"Bulked inserted/updated {len(df_correlation_time_series_ordered)} rows into tbl_rolling_correlations")
+    except Exception as e:
+        print(f"Error happened during insertion: {e}")
+        conn.rollback()
+    finally:
+        conn.close()  
 
 def main_cli():
     
@@ -186,3 +224,7 @@ def main_cli():
     asset_1, asset_2, df_daily_returns = get_daily_asset_returns(asset_1, asset_2, min_start_date, max_end_date)
     df_rolling_correlations = calc_rolling_correlation(asset_1, asset_2, df_daily_returns, n_months)
     insert_rolling_correlation_to_db(df_rolling_correlations)
+
+if __name__ == "__main__":
+    # By default, this driver should run the CLI version. Airflow job will be invoked in DAGs
+    main_cli()
