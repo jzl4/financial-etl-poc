@@ -52,20 +52,29 @@ The project ingests stock price data from the **Tiingo API**, applies **financia
 
 ## 🧰 Folder Structure
 financial-etl-poc/
+│
 ├── airflow/ # Dockerized Airflow stack: docker-compose.yml, Dockerfile, requirements.txt, DAGs
+│
 ├── api_rolling_correlation/ # FastAPI code to expose rolling correlation results via REST API
+│
 ├── archive-yahoo-finance/ # Deprecated drivers from earlier Yahoo Finance implementation; replaced by Tiingo
+│
 ├── data-quality/ # (Planned) Data validation rules: positive prices, correct splits, duplicate detection
+│
 ├── etl-drivers/ # ETL drivers for:
 │ # - Tiingo → staging
 │ # - staging → adjusted prod table
 │ # - rolling correlation calculator
+│
 ├── notebooks/ # Jupyter notebooks for experimentation, development, and testing
+│
 ├── sql_script/ # SQL scripts for table setup, transformation, or manual debugging
+│
 ├── utils/ # Shared utilities for:
 │ # - datetime conversions
 │ # - AWS RDS connections
 │ # - parsing & validating CLI args
+│
 ├── .env # Environment variables (excluded from version control)
 └── requirements.txt # Python dependencies
 
