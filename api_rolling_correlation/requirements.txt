@@ -1,0 +1,11 @@
+fastapi==0.110.0
+uvicorn[standard]==0.27.1   # ASGI Server, runs FastAPI apps
+python-dotenv==1.0.1    # Loads .env file
+psycopg2-binary==2.9.9  # Allows Python to connect to PostgreSQL (RDS)
+
+# To launch virtual environment which uses these requirements:
+# cd into api_rolling_correlation
+# python -m venv venv-api
+# source venv-api/bin/activate
+# pip install -r requirements.txt
+# pip list

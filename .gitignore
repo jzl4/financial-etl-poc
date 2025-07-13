@@ -5,8 +5,13 @@ __pycache__/
 *.pyo
 *.pyd
 
-# Environments
+# Python environments
 venv/
+venv-api/
+__pycache__/
+*.pyc
+
+# Environment variables
 .env
 *.env
 
