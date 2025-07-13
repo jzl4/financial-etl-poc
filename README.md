@@ -1,75 +1,101 @@
-# 🧠 Financial ETL Pipeline: From Raw API to ML-Ready Gold Data
+# financial-etl-poc
 
-Welcome to my end-to-end **financial data pipeline** project, designed as both a **technical showcase** and a foundation for more advanced machine learning applications in the fintech domain.
+This is a proof-of-concept (POC) project that demonstrates an end-to-end financial data pipeline architecture. It integrates **data engineering**, **cloud computing**, **quantitative finance**, and **software engineering best practices** to process, transform, and serve financial insights in a production-ready format.
 
-This project demonstrates my ability to:
-- Design modular and production-ready **ETL workflows**
-- Orchestrate them using **Dockerized Apache Airflow**
-- Transform noisy API payloads into structured, ML-ready datasets
-- Prepare the system for downstream **machine learning**, API deployment, and front-end consumption
+## 🌐 Project Overview
+
+The project ingests stock price data from the **Tiingo API**, applies **financial transformations**, and stores results in a PostgreSQL database. The pipeline supports both historical backfills and automated daily updates via **Dockerized Airflow** and will soon be orchestrated with **AWS Fargate**. Final outputs will be exposed via a **FastAPI** back-end and **React** front-end dashboard.
 
 ---
 
-## ✅ Accomplishments So Far
+## 💡 Skills Showcased
 
-### 🧱 Infrastructure
-- **Dockerized Airflow Stack**: All components of the pipeline are containerized for portability and reproducibility.
-- **PostgreSQL (AWS RDS)**: Centralized storage of all ETL data stages using a normalized schema.
-- **AWS Integration**: Hosted components on EC2 and RDS, reflecting real-world cloud deployment scenarios.
+### 🔬 Data Science & Engineering
+- Python-based ETL scripts
+- PostgreSQL: bronze (raw) → silver (cleaned) → gold (adjusted) table architecture
+- Modular data pipelines with CLI and Airflow DAG orchestration
+- Virtual environments for local development
+- Docker containers for portability and productionization
+- Airflow for pipeline scheduling
+- FastAPI for RESTful endpoint creation
+- React front-end for interactive dashboards (upcoming)
 
-### 🔁 Data Engineering Pipeline
+### ☁️ Cloud Infrastructure
+- **AWS EC2**: development and orchestration
+- **AWS RDS (PostgreSQL)**: persistent storage
+- **AWS Fargate**: container-based task execution (upcoming)
 
-| Layer       | Description                                                                                          |
-|-------------|------------------------------------------------------------------------------------------------------|
-| **Bronze**  | Raw JSON payloads from the [Yahoo Finance API](https://pypi.org/project/yfinance/) are ingested daily and stored in a structured format. |
-| **Silver**  | Flattened time series tables containing core fields like open, high, low, close, and volume, keyed by `ticker` and `business_date`. |
-| **Gold**    | Production-quality price data, adjusted for **stock splits and dividends**, suitable for backtesting and ML modeling. |
-
-- Pipelines are modular, logged, and scheduled via Airflow DAGs for both **daily incremental updates** and **historical backfill**.
-
----
-
-## 🚀 Vision & Roadmap
-
-### 📊 Phase 1 — ML Training & Prediction
-- Train machine learning models (e.g., linear regression, rolling correlation, or LSTM) on gold-layer data.
-- Schedule training and prediction workflows using **Airflow-managed ML pipelines**, enabling daily inference runs.
-
-### 🌐 Phase 2 — API Deployment
-- Serve model predictions through a **FastAPI endpoint**, allowing real-time access for downstream consumers.
-
-### 💻 Phase 3 — Front-End Dashboard
-- Build a lightweight front-end (likely in **React** or **Streamlit**) to visualize:
-  - Asset price trends  
-  - Prediction outputs  
-  - Model performance metrics
+### 📈 Quantitative Finance
+- Adjustment of historical stock returns for **dividends** and **stock splits**
+- Calculation of **rolling correlations** between assets
+- Upcoming: 
+  - Momentum and mean-reversion signals
+  - Minimum-variance portfolio optimization
+  - Risk metrics for portfolio construction
+  - Deep learning applied to time series
+  - GenAI applied to headlines/fundamental data
 
 ---
 
-## 🧩 Technologies Used
+## 🔁 Current ETL Workflow
 
-- **Python**, **Pandas**, **SQLAlchemy**
-- **Docker**, **Docker Compose**
-- **Apache Airflow**
-- **PostgreSQL (hosted on AWS RDS)**
-- **AWS EC2**
-- **yfinance** for data ingestion  
-- *Planned:* **FastAPI**, **React.js**, **scikit-learn**, **dbt**
+| Stage | Description |
+|-------|-------------|
+| **1. Ingestion** | Pulls raw price/volume data from the Tiingo API and stores it in a staging table (`tbl_api_payloads_tiingo_daily`) using a Python CLI tool. Supports historical backfill and daily automation via Airflow. |
+| **2. Transformation** | Converts staging data into clean, adjusted price series (silver → gold tables) accounting for dividends and splits. Supports historical and daily runs. |
+| **3. Feature Engineering** | Calculates **rolling correlation** between two tickers for a given time window. Results are stored in `tbl_rolling_correlations`. |
+| **4. Automation (upcoming)** | Dockerized Airflow will be deployed to **AWS Fargate** for fully-managed, autoscaled daily ETL runs. |
+| **5. API + Dashboard (upcoming)** | A REST endpoint via FastAPI will expose correlation results, consumed by a hosted React dashboard. |
+| **6. Modeling (future)** | Modules to compute signals (momentum, stat arb), build portfolios, manage risk, and run ML/DL models on financial time series. |
 
 ---
 
-## 📁 Repo Structure (Simplified)
-
+## 🧰 Folder Structure
 financial-etl-poc/
+├── airflow/ # Dockerized Airflow stack: docker-compose.yml, Dockerfile, requirements.txt, DAGs
+├── api_rolling_correlation/ # FastAPI code to expose rolling correlation results via REST API
+├── archive-yahoo-finance/ # Deprecated drivers from earlier Yahoo Finance implementation; replaced by Tiingo
+├── data-quality/ # (Planned) Data validation rules: positive prices, correct splits, duplicate detection
+├── etl-drivers/ # ETL drivers for:
+│ # - Tiingo → staging
+│ # - staging → adjusted prod table
+│ # - rolling correlation calculator
+├── notebooks/ # Jupyter notebooks for experimentation, development, and testing
+├── sql_script/ # SQL scripts for table setup, transformation, or manual debugging
+├── utils/ # Shared utilities for:
+│ # - datetime conversions
+│ # - AWS RDS connections
+│ # - parsing & validating CLI args
+├── .env # Environment variables (excluded from version control)
+└── requirements.txt # Python dependencies
 
-├── dags/ # Airflow DAG definitions
+---
 
-├── scripts/ # Python driver scripts (ingestion, transformation, etc.)
+## 🚧 Upcoming Features
 
-├── utils/ # Utility modules (e.g., db connectors)
+- **🧠 Quantitative Modeling:**
+  - Momentum, mean reversion, statistical arbitrage strategies
+  - Minimum-variance and risk-parity portfolio construction
+  - Time series forecasting with deep learning (e.g., LSTM, TCN, Transformer)
+  - GenAI analysis of financial headlines, 10-Ks, or earnings transcripts
 
-├── docker/ # Dockerfiles and Airflow stack configs
+- **🛠 Software Engineering Enhancements:**
+  - Logging and monitoring of pipeline events
+  - Unit/integration tests
+  - CI/CD for deployments (GitHub Actions or AWS CodePipeline)
+  - Exception handling and retry logic
 
-├── notebook/ # Exploratory work & sanity checks
+- **📊 Dashboard:**
+  - Fully interactive correlation visualization
+  - Inputs: ticker 1, ticker 2, time window
+  - Real-time response from FastAPI + PostgreSQL
+  - Hosted via AWS or other cloud provider
 
-└── README.md
+---
+
+## ✅ Highlights
+
+- Modular architecture supporting **reproducibility**, **scalability**, and **maintainability**
+- Full control over both **backfilling** and **real-time daily updates**
+- Clear distinction between **raw**, **clean**, and **adjusted** data layers
+- Designed for extensibility into both **machine learning pipelines** and **portfolio analytics**
