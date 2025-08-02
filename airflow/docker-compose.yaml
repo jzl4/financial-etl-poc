@@ -4,8 +4,11 @@ x-airflow-common:
     context: .
     dockerfile: Dockerfile.airflow  
   image: apache/airflow:2.8.1
+
+  # Use the .env with RDS credentials in base folder: financial-etl-poc/.env
   env_file:
-  - .env
+  - ../.env
+  # Connect to RDS using .env file's credentials. Need to run in CLI: export $(cat ../.env | xargs) or run load_rds_credentials_from_env_for_airflow.sh
   environment:
     &airflow-env
     AIRFLOW__CORE__EXECUTOR: LocalExecutor
@@ -14,12 +17,16 @@ x-airflow-common:
     AIRFLOW__CORE__FERNET_KEY: ''
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
     AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+
+    # These colons are not mounts. They are listing different directories for Python Path
+    PYTHONPATH: /opt/airflow:/opt/airflow/etl_drivers:/opt/airflow/utils
+
+    # All of the upstream dependencies (scripts, helper functions, etc) that DAGs require need to be listed here. Examples: utils/ folder, etl_driver folder, etc. Even though DAGs import these upstream dependencies, Docker is an isolated environment that needs these upstream dependencies to be listed explicitly here
   volumes:
-    - ./dags:/opt/airflow/dags
-    - ./logs:/opt/airflow/logs
-    - ./plugins:/opt/airflow/plugins
-    - ./scripts:/opt/airflow/scripts
-    - ./utils:/opt/airflow/utils
+    - ./dags:/opt/airflow/dags  # financial-etl-poc/airflow/dags on EC2 becomes -> /opt/airflow/dags in Docker container
+    - ./logs:/opt/airflow/logs  # financial-etl-poc/airflow/logs on EC2 becomes -> /opt/airflow/logs in Docker container
+    - ../etl_drivers:/opt/airflow/etl_drivers   # financial-etl-poc/etl_drivers becomes -> /opt/airflow/etl_drivers
+    - ../utils:/opt/airflow/utils   # financial-etl-poc/utils becomes -> /opt/airflow/utils
   user: "${AIRFLOW_UID:-50000}:0"
   
 services:
