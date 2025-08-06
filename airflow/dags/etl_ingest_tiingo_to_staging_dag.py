@@ -9,9 +9,12 @@ import pendulum
 local_timezone = pendulum.timezone("America/New_York")
 
 # I need to go up two layers to reach the base level of the repo, because this current dag is inside of financial-etl-poc/airflow/dags folder
-current_folder = os.path.dirname(__file__)
-project_root_folder = os.path.abspath(os.path.join(current_folder, "../.."))
-sys.path.append(project_root_folder)
+# current_folder = os.path.dirname(__file__)
+# project_root_folder = os.path.abspath(os.path.join(current_folder, "../.."))
+# sys.path.append(project_root_folder)
+
+# Added this because we will only run this DAG from inside of a Dockerized Airflow container, not locally from financial-etl-poc on my EC2, but rather it will be run from /opt/airflow (inside container)
+sys.path.append("/opt/airflow")
 
 from etl_drivers.etl_ingest_tiingo_to_staging import main_airflow as ingest_tiingo_to_staging_main_airflow
 

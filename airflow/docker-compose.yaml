@@ -27,6 +27,7 @@ x-airflow-common:
     - ./logs:/opt/airflow/logs  # financial-etl-poc/airflow/logs on EC2 becomes -> /opt/airflow/logs in Docker container
     - ../etl_drivers:/opt/airflow/etl_drivers   # financial-etl-poc/etl_drivers becomes -> /opt/airflow/etl_drivers
     - ../utils:/opt/airflow/utils   # financial-etl-poc/utils becomes -> /opt/airflow/utils
+    - ../.env:/opt/.env   # I need to also mount the .env with RDS credentials into the Docker container
   user: "${AIRFLOW_UID:-50000}:0"
   
 services:
@@ -56,9 +57,6 @@ services:
 
   airflow-init:
     image: ${AIRFLOW_IMAGE_NAME:-apache/airflow:2.8.1}
-    depends_on:
-      postgres:
-        condition: service_healthy
     environment:
       &airflow-common-env
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
