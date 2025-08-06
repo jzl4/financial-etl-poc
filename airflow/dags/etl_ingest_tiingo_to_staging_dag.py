@@ -35,7 +35,7 @@ with DAG(
     default_args = default_args,
     description = "Extracts daily closing prices and volumes from Tiingo API and inserts into tbl_tiingo_daily_staging",
     schedule_interval = "0 22 * * 1-5",
-    start_date = datetime(2025, 7, 14, tzinfo = local_timezone),
+    start_date = pendulum.datetime(2025, 7, 14, tz=local_timezone),
     catchup = False,
     tags = ["Tiingo", "ETL"]
 ) as dag:
