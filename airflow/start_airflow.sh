@@ -14,9 +14,10 @@ export $(cat ../.env | xargs)
 echo "Running: docker compose build..."
 docker compose build
 
+# No longer needed because I defined airflow webserver and airflow scheduler as depending on airflow-init
 # Initialize Airflow DB (runs airflow db init inside a persistent container)
-echo "Running: docker compose run airflow-init..."
-docker compose run airflow-init
+# echo "Running: docker compose run airflow-init..."
+# docker compose run airflow-init
 
 # Start up all Airflow services (webserver, scheduler)
 echo "Running: docker compose up..."

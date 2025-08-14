@@ -14,7 +14,7 @@ x-airflow-common:
     AIRFLOW__CORE__EXECUTOR: LocalExecutor
     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${rds_username}:${rds_password}@${rds_host}:${rds_port}/${rds_dbname}
     AIRFLOW__LOGGING__LOGGING_LEVEL: "WARNING"
-    AIRFLOW__CORE__FERNET_KEY: ''
+    AIRFLOW__CORE__FERNET_KEY: '${FERNET_KEY}'
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
     AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
 
@@ -44,6 +44,9 @@ services:
       retries: 5
       start_period: 30s
       timeout: 10s
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
 
   airflow-scheduler:
     <<: *airflow-common
@@ -54,6 +57,9 @@ services:
       retries: 5
       start_period: 30s
       timeout: 10s
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
 
   airflow-init:
     <<: *airflow-common
@@ -61,4 +67,12 @@ services:
     command:
       - -c
       - |
-        airflow db migrate
+        echo "Inside of container, running: airflow db migrate & airflow users create..."
+        airflow db migrate && \
+        airflow users create \
+          --username ${AIRFLOW_USERNAME} \
+          --password ${AIRFLOW_PASSWORD} \
+          --firstname Joe \
+          --lastname Lu \
+          --role Admin \
+          --email Joe.Zhou.Lu@gmail.com
