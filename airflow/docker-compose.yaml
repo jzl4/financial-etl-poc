@@ -23,6 +23,7 @@ x-airflow-common:
 
     # All of the upstream dependencies (scripts, helper functions, etc) that DAGs require need to be listed here. Examples: utils/ folder, etl_driver folder, etc. Even though DAGs import these upstream dependencies, Docker is an isolated environment that needs these upstream dependencies to be listed explicitly here
   volumes:
+    - ./config:/opt/airflow/config  # Required to store airflow.cfg which is shared by airflow-init, airflow-webserver, and airflow-scheduler services/containers
     - ./dags:/opt/airflow/dags  # financial-etl-poc/airflow/dags on EC2 becomes -> /opt/airflow/dags in Docker container
     - ./logs:/opt/airflow/logs  # financial-etl-poc/airflow/logs on EC2 becomes -> /opt/airflow/logs in Docker container
     - ../etl_drivers:/opt/airflow/etl_drivers   # financial-etl-poc/etl_drivers becomes -> /opt/airflow/etl_drivers

@@ -12,8 +12,20 @@ sys.path.append(project_root_folder)
 
 # Load .env file for AWS RDS login credentials and Tiingo API token
 from dotenv import load_dotenv
+
+# If we are running this DAG from inside of Dockerized Airflow container
+docker_env_path = "/opt/.env"
+# If we are running this locally in financial-etl-poc on EC2
 dotenv_path = os.path.join(project_root_folder, ".env")
-load_dotenv(dotenv_path)
+
+if os.path.exists(docker_env_path):
+    load_dotenv(docker_env_path)
+    print("✅ Loaded environment variables from /opt/.env (Docker container)")
+elif os.path.exists(dotenv_path):
+    load_dotenv(dotenv_path)
+    print(f"✅ Loaded environment variables from {dotenv_path} (local environment)")
+else:
+    print("❌ .env file not found in either location.")
 
 # Import functionalities from other modules in this project
 from utils.db_utils import *
