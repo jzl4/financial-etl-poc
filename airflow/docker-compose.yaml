@@ -18,9 +18,6 @@ x-airflow-common:
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
     AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
 
-    # These colons are not mounts. They are listing different directories for Python Path
-    PYTHONPATH: /opt/airflow:/opt/airflow/etl_drivers:/opt/airflow/utils
-
     # All of the upstream dependencies (scripts, helper functions, etc) that DAGs require need to be listed here. Examples: utils/ folder, etl_driver folder, etc. Even though DAGs import these upstream dependencies, Docker is an isolated environment that needs these upstream dependencies to be listed explicitly here
   volumes:
     - ./config:/opt/airflow/config  # Required to store airflow.cfg which is shared by airflow-init, airflow-webserver, and airflow-scheduler services/containers
@@ -38,6 +35,7 @@ services:
     command:
       - -c
       - |
+        export PYTHONPATH=${PYTHONPATH:-}:/opt/airflow/etl_drivers:/opt/airflow/utils
         echo "Inside of container, running: airflow db migrate & airflow users create..."
         airflow db migrate && \
         airflow users create \
@@ -50,7 +48,11 @@ services:
 
   airflow-webserver:
     <<: *airflow-common
-    command: ["-c", "airflow webserver"]
+    command:
+      - -c
+      - |
+        export PYTHONPATH=${PYTHONPATH:-}:/opt/airflow/etl_drivers:/opt/airflow/utils
+        exec airflow webserver
     ports:
       - "8080:8080"
     environment:
@@ -67,7 +69,11 @@ services:
 
   airflow-scheduler:
     <<: *airflow-common
-    command: ["-c", "airflow scheduler"]
+    command:
+      - -c
+      - |
+        export PYTHONPATH=${PYTHONPATH:-}:/opt/airflow/etl_drivers:/opt/airflow/utils
+        exec airflow scheduler
     healthcheck:
       test: ["CMD", "airflow", "jobs", "check", "--job-type", "SchedulerJob", "--hostname", "localhost"]
       interval: 30s
