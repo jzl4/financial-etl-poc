@@ -1,7 +1,4 @@
-numpy==1.24.4
-pandas==1.5.3
-psycopg2-binary==2.9.10
-python-dateutil==2.9.0.post0
-python-dotenv==0.21.1
-pytz==2025.2
-six==1.17.0
+# This already includes psycopg2, but also connection types for UI, Hooks, and Operators
+apache-airflow-providers-postgres
+
+# When I build DAGs that utilize Pandas or NumPy, I will need to list those here as well

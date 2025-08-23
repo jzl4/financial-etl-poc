@@ -1,0 +1,85 @@
+x-airflow-common:
+  &airflow-common
+  build:
+    context: .
+    dockerfile: Dockerfile.airflow  
+  image: apache/airflow:2.8.1
+  entrypoint: /bin/bash
+  # Use the .env with RDS credentials in base folder: financial-etl-poc/.env
+  env_file:
+  - ../.env
+  # Connect to RDS using .env file's credentials. Need to run in CLI: export $(cat ../.env | xargs) or run load_rds_credentials_from_env_for_airflow.sh
+  environment:
+    &airflow-env
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${rds_username}:${rds_password}@${rds_host}:${rds_port}/${rds_dbname}
+    AIRFLOW__LOGGING__LOGGING_LEVEL: "WARNING"
+    AIRFLOW__CORE__FERNET_KEY: '${FERNET_KEY}'
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
+    AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+
+    # All of the upstream dependencies (scripts, helper functions, etc) that DAGs require need to be listed here. Examples: utils/ folder, etl_driver folder, etc. Even though DAGs import these upstream dependencies, Docker is an isolated environment that needs these upstream dependencies to be listed explicitly here
+  volumes:
+    - ./config:/opt/airflow/config  # Required to store airflow.cfg which is shared by airflow-init, airflow-webserver, and airflow-scheduler services/containers
+    - ./dags:/opt/airflow/dags  # financial-etl-poc/airflow/dags on EC2 becomes -> /opt/airflow/dags in Docker container
+    - ./logs:/opt/airflow/logs  # financial-etl-poc/airflow/logs on EC2 becomes -> /opt/airflow/logs in Docker container
+    - ../etl_drivers:/opt/airflow/etl_drivers   # financial-etl-poc/etl_drivers becomes -> /opt/airflow/etl_drivers
+    - ../utils:/opt/airflow/utils   # financial-etl-poc/utils becomes -> /opt/airflow/utils
+    - ../.env:/opt/.env   # I need to also mount the .env with RDS credentials into the Docker container
+  user: "${AIRFLOW_UID:-50000}:0"
+  
+services:
+
+  airflow-init:
+    <<: *airflow-common
+    command:
+      - -c
+      - |
+        export PYTHONPATH=${PYTHONPATH:-}:/opt/airflow/etl_drivers:/opt/airflow/utils
+        echo "Inside of container, running: airflow db migrate & airflow users create..."
+        airflow db migrate && \
+        airflow users create \
+          --username ${AIRFLOW_USERNAME} \
+          --password ${AIRFLOW_PASSWORD} \
+          --firstname Joe \
+          --lastname Lu \
+          --role Admin \
+          --email Joe.Zhou.Lu@gmail.com
+
+  airflow-webserver:
+    <<: *airflow-common
+    command:
+      - -c
+      - |
+        export PYTHONPATH=${PYTHONPATH:-}:/opt/airflow/etl_drivers:/opt/airflow/utils
+        exec airflow webserver
+    ports:
+      - "8080:8080"
+    environment:
+      AIRFLOW__WEBSERVER__WORKERS: 1
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 30s
+      retries: 5
+      start_period: 30s
+      timeout: 10s
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+
+  airflow-scheduler:
+    <<: *airflow-common
+    command:
+      - -c
+      - |
+        export PYTHONPATH=${PYTHONPATH:-}:/opt/airflow/etl_drivers:/opt/airflow/utils
+        exec airflow scheduler
+    healthcheck:
+      test: ["CMD", "airflow", "jobs", "check", "--job-type", "SchedulerJob", "--hostname", "localhost"]
+      interval: 30s
+      retries: 5
+      start_period: 30s
+      timeout: 10s
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
