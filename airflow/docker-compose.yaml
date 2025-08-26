@@ -1,5 +1,3 @@
-# version: '3.8'
-
 # Define a base configuration to avoid repetition
 x-airflow-base: &airflow-base
   build:
@@ -8,6 +6,7 @@ x-airflow-base: &airflow-base
     args:
       # Use the AIRFLOW_UID from the .env file to set the user in the Dockerfile
       - AIRFLOW_UID=${AIRFLOW_UID:-50000}
+  user: "${AIRFLOW_UID:-1000}:0"   # run as your host UID, group root
   # Use the .env with RDS credentials in base folder: financial-etl-poc/.env
   env_file:
     - ../credentials.env
@@ -24,7 +23,6 @@ x-airflow-base: &airflow-base
     - ./dags:/opt/airflow/dags
     - ./logs:/opt/airflow/logs
     - ./plugins:/opt/airflow/plugins
-
 
 services:
 

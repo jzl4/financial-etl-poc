@@ -1,24 +1,28 @@
-# Most recent LTS verison is 2.9.2
+# Most recent LTS version is 2.9.2
 FROM apache/airflow:2.9.2
 
 # Get user's ID on Linux OS
 ARG AIRFLOW_UID=50000
 
-# Switches active user inside of the container to root / admin
+# Switch to root to perform system modifications
 USER root
 
-# Modify the existing airflow user to have the host's UID,
-# but assign it to the root group (GID=0) as required by the image.
-RUN usermod --uid ${AIRFLOW_UID} --gid 0 airflow
+# Fix ownership issues before modifying the user
+# First, change ownership of airflow's home directory and related files
+RUN chown -R ${AIRFLOW_UID}:0 /home/airflow && \
+    chown -R ${AIRFLOW_UID}:0 /opt/airflow
+
+# Now modify the airflow user's UID to match the host
+RUN usermod --uid ${AIRFLOW_UID} airflow
 
 # Copy requirements and install them
 COPY requirements.txt /requirements.txt
 
-# Change ownership of the file to the airflow user
-RUN chown airflow:airflow /requirements.txt
+# Change ownership of the requirements file to the airflow user
+RUN chown airflow:root /requirements.txt
 
 # Switch back to airflow user BEFORE installing packages
 USER airflow
 
-# Now, install packages as the airflow user
+# Install packages as the airflow user
 RUN pip install --no-cache-dir -r /requirements.txt
