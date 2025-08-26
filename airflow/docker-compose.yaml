@@ -24,6 +24,7 @@ x-airflow-base: &airflow-base
     - ./config:/opt/airflow/config
     - ./dags:/opt/airflow/dags
     - ./logs:/opt/airflow/logs
+    - ./plugins:/opt/airflow/plugins
 
 
 services:
@@ -45,7 +46,7 @@ services:
           --firstname Joe \
           --lastname Lu \
           --role Admin \
-          --email Joe.Zhou.Lu@gmail.com
+          --email Joe.Zhou.Lu@gmail.com || true
 
   # The Airflow webserver service
   airflow-webserver:

@@ -1,5 +1,5 @@
-# Seems that 3.0.4 is the most recent stable version
-FROM apache/airflow:3.0.4
+# Most recent LTS verison is 2.9.2
+FROM apache/airflow:2.9.2
 
 # Get user's ID on Linux OS
 ARG AIRFLOW_UID=50000
