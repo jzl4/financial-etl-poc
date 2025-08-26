@@ -1,5 +1,4 @@
-# In airflow-setup/docker-compose.yaml
-version: '3.8'
+# version: '3.8'
 
 # Define a base configuration to avoid repetition
 x-airflow-base: &airflow-base
@@ -11,7 +10,7 @@ x-airflow-base: &airflow-base
       - AIRFLOW_UID=${AIRFLOW_UID:-50000}
   # Use the .env with RDS credentials in base folder: financial-etl-poc/.env
   env_file:
-    - ../.env
+    - ../credentials.env
   environment:
     # Construct the database connection string from your .env variables
     - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://${rds_username}:${rds_password}@${rds_host}:${rds_port}/${rds_dbname}
