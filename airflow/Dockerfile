@@ -1,10 +1,10 @@
 # Most recent LTS version is 2.9.2
 FROM apache/airflow:2.9.2
 
-# Get user's ID on Linux OS
-ARG AIRFLOW_UID=50000
+# Since we've sent the user ID to 1000 (which is the same as username in Linux) in credentials.env, that will flow into docker-compose.yaml as AIRFLOW_UID, and then flow into this Dockerfile
+ARG AIRFLOW_UID 
 
-# Switch to root to perform system modifications
+# Switch to root to: modify user accounts, change file ownership, and install system packages
 USER root
 
 # Fix ownership issues before modifying the user

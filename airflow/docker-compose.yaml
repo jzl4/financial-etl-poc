@@ -4,8 +4,8 @@ x-airflow-base: &airflow-base
     context: .
     dockerfile: Dockerfile
     args:
-      # Use the AIRFLOW_UID from the .env file to set the user in the Dockerfile
-      - AIRFLOW_UID=${AIRFLOW_UID:-50000}
+      # Since we've sent the user ID to 1000 (which is the same as username in Linux) in credentials.env, that will flow into docker-compose.yaml as AIRFLOW_UID as 1000 as well
+      - AIRFLOW_UID=${AIRFLOW_UID}
   user: "${AIRFLOW_UID:-1000}:0"   # run as your host UID, group root
   # Use the .env with RDS credentials in base folder: financial-etl-poc/.env
   env_file:
