@@ -35,7 +35,7 @@ services:
       - -c
       - |
         # Initialize the database
-        airflow db init
+        airflow db migrate
         # Create the admin user if they don't exist
         airflow users create \
           --username ${AIRFLOW_USERNAME} \
