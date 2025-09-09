@@ -51,10 +51,37 @@ WARN[000] The "rds_port" variable is not set. Defaulting to blank string.
 - Even if you say in the docker-compose.yaml:
   env_file:
   - ../credentials.env
-  In theory, it should go up one level from financial-etl-poc/airflow/ folder to financial-etl-poc/ folder and find credentials.env, but it still does not.  (Why?)
-- The solution was to inject the credentials using Linux CLI: export $(cat ../credentials.env | xargs)
+  In theory, it should go up one level from financial-etl-poc/airflow/ folder to financial-etl-poc/ folder and find credentials.env, but it still does not
+- The reason is because Docker Compose can only interpolate ${VAR_NAME} via the actual shell environment or an .env file in the same directory as the docker-compose.yaml file. For example, if docker-compose.yaml requires rds_username and rds_password (below code block), and it is located in financial-etl-poc/airflow/ folder, credentials.env needs to be the same financial-etl-poc/airflow/ folder 
+```
+  environment:
+    # Extract credentials such as RDS username and password from .env file, to connect to PostgreSQL database
+    - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://${rds_username}:${rds_password}@${rds_host}:${rds_port}/${rds_dbname}
+```
+- The Docker Compose file docker-compose.yaml cannot interpolate/resolve the credientials from an .env file which resides in a different folder.  Since credentials is actually located in financial-etl-poc/, docker-compose.yaml cannot resolve (do the substitution) properly
+- The solution was to inject the credentials using Linux shell environment: export $(cat ../credentials.env | xargs)
+- Explanation:
+
+This reads the contents of credentials.env file
+```
+cat ../credentials.env
+```
+
+This takes the multi-line output and turns it into a single space-separated line
+```
+rds_username=my_username rds_password=my_password rds_port=1234
+```
+
+This sets environment variables in the shell
+```
+export $(...)
+# Equivalent to:
+export rds_username=my_username rds_password=my_password rds_port=1234
+```
+
 
 ### Section explaining the UID and permissions in mounted folders issue
+- When Airflow runs inside of a Docker container, a one-to-one mapping is created between local folders (on my EC2) and the container folders (inside of Docker container).   such that when the contents of container folders such as opt/airflow/dags or opt/airflow/logs become linked to mounted directories (inside of container) such as opt/airflow/dags, opt/airflow/logs. 
 - Explain why AIRFLOW_UID=1000
 - Interestingly, in our dockerfile, we have as our solution (our default Linux user ID that is not root is normally 1000, and we are changing the airflow folder inside of the container to be owned by 1000):
 RUN chown -R ${AIRFLOW_UID}:0 /home/airflow
