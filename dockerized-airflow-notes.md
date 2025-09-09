@@ -93,6 +93,8 @@ sudo chown -R 50000:0 dags/ plugins/ scripts/ utils/
 ### Section on the "docker build" timeline and the "docker up/run" timeline
 
 ### To do:
+- Can we setup airflow using "airflow db init" just once, and throw it away using "docker compose run --rm" (remove, as in, temporary container)?  Because right now, the current setup has airflow init listed under services section, so doesn't it run "airflow init" every time that I wake up the containers using "docker compose up"?  Maybe that is what happens, but it skips initialization because it sees that user already exists, so it's fine, it's not re-creating a new admin account everytime, right?
+- What is the role of entrypoint: /bin/bash, and why is it only listed under airflow-init section, but not listed under webserver or scheduler sections?
 - Discuss more about build vs. image
 - Need to discuss YAML anchors, which are a block of config that avoids duplication. Example: &airflow-common
 
