@@ -107,6 +107,16 @@ airflow-webserver-1 exited with code 1
       AIRFLOW__CORE__FERNET_KEY: '${_FERNET_KEY}'
       # ... your other environment variables ...
     ```
+- The fact it is saying "Creating new FAB webserver config file..." also means that airflow-init created essential config file such as airflow.cfg in the /opt/airflow directory, but airflow-webserver is unable to access that one, due to missing fernet key, so it creates its own airflow.cfg file, causing this message to appear
+What is the airflow.cfg file?
+- The airflow.cfg file is the main configuration file for Airflow. It contains hundreds of settings that control nearly every aspect of Airflow's behavior, organized into sections like [core], [webserver], [scheduler], and [database].  Think of it as Airflow's central nervous system. It's where you define key parameters, including: - executor: Which executor to use (LocalExecutor, CeleryExecutor, etc.).
+- sql_alchemy_conn: The connection string for the metadata database.
+- fernet_key: The encryption key for secrets.
+- dags_folder: The path to your DAG files.
+- load_examples: Whether to load the example DAGs.
+- Airflow-init also creates webserver_config.py 
+- Both the airflow.cfg and webserver_config.py are created by airflow init, and mirrored onto local /config folder through volume mounts.  When airflow-webserver starts after that, it looks inside of /opt/airflow/config and finds these configuration files left there earlier than init container
+
 
 ### Section on the virtual environment requirements
 - If I am setting up this project, do I need a virtual enviroment?  Airflow already runs inside of a Docker container, and pulls the dependencies from requirements.txt, so isn't that already sufficient? 
