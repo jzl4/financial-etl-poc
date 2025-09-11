@@ -3,7 +3,7 @@
 
 - This assumes that you already have an existing AWS RDS database
 
-## Project Structure
+###  Project Structure
 - financial-etl-poc/ (git repo, main folder)
   - .venv
   - airflow/
@@ -18,11 +18,44 @@
   - credentials.env
   - .gitignore
 
+### How these pieces interact with each other
+- The dockerfile is kind of for build time
+- The docker-compose is kind of for run-time
+- The new method of defining the user ID to be 1000 in the Dockerfile, as opposed to the docker-compose.yaml file, is much more stable (why is this?)
+
 ### Section explaining what each of these pieces mean
 - Explain what is usually inside of config, dags, logs, plugins, etc.
 - Explain what credientials.env contains.  Example: rds_username = blah blah, rds_password = blah blah
+- The apache-airflow-providers-postgres package is the modern, official way to integrate Airflow with PostgreSQL.  It bundles everything that Airflow needs to talk to Postgres, including psycopg2, connection types for the UI, postreg-specific hooks, and operators to use in DAGs
+- Connection Types (The UI Form): When you go to the Airflow UI to add a new connection to Postgres, the provider gives you a specific form with clearly labeled fields like "Host," "Schema," "Login," and "Port." Without the provider, Airflow wouldn't know to show you this specific, helpful form.
+- Hooks (The Pre-Wired Adapter): A Hook is a pre-built Python class that handles all the boilerplate code for connecting to a database and running commands.  Instead of you writing psycopg2.connect(...), handling credentials, creating a cursor, and managing transactions in every task, you can just import PostgresHook and say pg_hook.run("SELECT * FROM my_table;"). It handles the messy connection details for you.
+- Operators (The Remote Control Button): An Operator is a pre-built Airflow task. The PostgresOperator, for example, is a single button you can put in your DAG that is pre-programmed to do one thing: execute a SQL statement. You just tell it which SQL file to run, and it uses a PostgresHook under the hood to get the job done.
 
-### Important: need a section explaining what each of the pieces inside of the Dockerfile, docker-compose.yaml, and requirements.txt mean
+### Walkthrough of requirements.txt file
+- A user ID is like a "social security number" for a user on a Linux-based system. The administrator (root) has a UID of 0, and typically the first "regular" (non-root) user is given UID of 1000
+- However, typically, the default UID for Airflow process is 50000, which is differ from the UID of 1000
+- This causes issues later on, when the Airflow process from inside of Docker container (with UID 50000) tries to write outside, via volume mounts, to local folders on EC2 with owner ID 1000; this will result in a "permission denied" error, for example, when writing to airflow/logs/ folder
+- We resolve this in the Dockerfile, by ensuring that the user ID inside of the Docker container (for folders like /opt/airflow/) matches that of the local EC2 user (who is the owner of the local files airflow/ folder); this is basically telling the system that they are "same person", so allow Airflow from Docker container to write to local EC2 folders
+
+### Walkthrough of docker-compose.yaml file
+- The keyword "image" is when you want to pull a pre-made, generic image directly from Docker hub
+- In contrast, "build" is used when you have a Dockerfile and need to create a custom image, which includes requirements.txt (and what other features are custom in this case?)
+- (What are the consequences of using both "image" and "build" in the same docker-compose.yaml file? What kinds of errors would we get?)
+- The container_name is optional, but highly recommended.  If we omit it, Docker will assign a generic, long name like airflow-setup-airflow-webserver-1.  By providing a simple container name, such as "airflow-webserver", it becomes much easier to run commands for a specific container, such as "docker logs airflow-webserver"
+```
+healthcheck:
+  test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+  interval: 30s
+  timeout: 10s
+  retries: 3
+```
+- A healthcheck is a small test that Docker runs periodically to check if your service is actually still working correctly.  For example, this healthcheck curls the webserver's endpoint, and checks if it returns a success code that indicates it is healthy. It runs this test every 30 seconds, Docker waits for 10 seconds for the test to finish before considering it a failure, and it needs to try (and fail) 3 times in a row before Docker marks the container as "unhealthy".
+```
+airflow-scheduler:
+  ...
+  restart: always
+```
+- This configuration tells Docker to restart the container if it ever stops for any reason (if the container crashes or if the host machine reboots).  This ensures that the scheduler or webserver are resilient and keep running, without manual intervention
 - The "true" part in airflow users create is very important
 - Othrwise, I will get an error like below, on my second run of the Docker container via "docker compose up", because on the first iteration "docker compose build; docker compose up", airflow init already created an admin user account, so the second time, it will run into a conflict
 ```
@@ -30,11 +63,13 @@ airflow-init-1       | joelu already exist in the db
 airflow-init-1 exited with code 0
 ```
 
-### Add a section for reseting all Airflow-related AWS RDS tables, in cases where:
+### Important: need a timeline of the "build" stage vs. "docker compose up" stage to explain what is happening at each step
+
+
+
+### Add a section for resetting all Airflow-related AWS RDS tables, in cases where:
 - When should we use this option?
 - (See the comments in the reset_airflow.sql for proper usage)
-
-### Important: need a timeline of the "build" stage vs. "docker compose up" stage to explain what is happening at each step
 
 ### Choosing either build or image, but not both
 ```
@@ -46,6 +81,7 @@ x-airflow-common:
   image: apache/airflow:2.8.1
 ```
 This causes conflicts, because image is saying to use specifically this version of airflow, from version 2.8.1, whereas build is using a customization defined in the Dockerfile.  Solution needs to remove the image portion
+- When you provide both build and image in docker-compose.yaml, Docker's behavior can be unpredictable. Often, it will prioritize the image tag, pull the generic image from Docker Hub, and completely ignore your build section. This means your custom Dockerfile never ran, and the libraries in your requirements.txt were never installed, leading to "module not found" errors later. 
 
 ### A discussion of YAML anchors
 ```
@@ -232,6 +268,7 @@ sudo chown -R 50000:0 dags/ plugins/ scripts/ utils/
 - Explain group ID vs user ID
 
 ### Why doesn't the credentials.env file need to be mounted under volumes section?
+- The env_file directive is the correct, secure way to load variables. Mounting the file itself (volumes: - ../.env:/opt/.env) unnecessarily exposes your raw credentials file inside the container's filesystem, which is a security risk. Stick to using only env_file
 What happens with the .env file:
 - At container startup, Docker reads credentials.env from local file system
 - Docker parses the file and extracts the environmental variables, such as rds_username, rds_password, etc.
@@ -240,6 +277,7 @@ Therefore, the file itself is never copied into the container; the container onl
 - A malicious agent cannot search for an .env file in file system (it doesn't exist)
 - A malicious agent must know the exact variable name, such as $RDS_USERNAME
 - Other containers cannot see it
+
 
 ### Section on the "docker build" timeline and the "docker up/run" timeline
 
