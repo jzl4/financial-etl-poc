@@ -153,6 +153,9 @@ What is the airflow.cfg file?
 - Airflow-init also creates webserver_config.py 
 - Both the airflow.cfg and webserver_config.py are created by airflow init, and mirrored onto local /config folder through volume mounts.  When airflow-webserver starts after that, it looks inside of /opt/airflow/config and finds these configuration files left there earlier than init container
 
+### Difference between AIRFLOW__WEBSERVER__SECRET_KEY vs. AIRFLOW__CORE__FERNET_KEY
+- AIRFLOW__CORE__FERNET__KEY is used for encryption at rest.  It encrypts sensitive information before it is saved to the Airflow metadata database.  It protects secrets (like passwords, keys, tokens) inside of your database.  If someone gained access to a backup of your database, they would not be able to read these secrets without the Fernet key
+- AIRFLOW__WEBSEVER__SECRET_KEY is used for securing user sessions in transit.  Its job is to sign the browser cookie that Airflow webserver gives you after you log in.  This protects the integrity of the user's logged-in session while they are actively using the Airflow UI
 
 ### Section on the virtual environment requirements
 - If I am setting up this project, do I need a virtual enviroment?  Airflow already runs inside of a Docker container, and pulls the dependencies from requirements.txt, so isn't that already sufficient? 
@@ -256,6 +259,15 @@ airflow-init:
     airflow users create ... || true
     ```
 - Therefore, the default entrypoint is not sufficient for our needs in airflow init, and we have to override the default entry, and create our own custom one. We set the entry point to /bin/bash, use -c flag to say "whatever string that follows needs to be executed as a shell script" and |- is YAML syntax to define a multi-line string. Through this, we are able to: execute multiple commands in sequence, run a multi-line shell script, and handle bash's if/else logic in our entrypoint command
+
+### How to check your identity in Linux CLI
+```
+$ whoami
+```
+```
+$ id -u
+```
+- If "whoami" prints out "root" and "id -u" returns 0, then you are already root user
 
 ### UID and permissions in mounted folders issue
 - When Airflow runs inside of a Docker container, a one-to-one mapping is created between local folders (on my EC2) and the container folders (inside of Docker container).   such that when the contents of container folders such as opt/airflow/dags or opt/airflow/logs become linked to mounted directories (inside of container) such as opt/airflow/dags, opt/airflow/logs. 
