@@ -173,6 +173,7 @@ RUN chown -R ${AIRFLOW_UID}:0 /home/airflow && \
 - Your Goal: Change the airflow user's UID to match your host system (1000 in your case)
 - The Issue: When usermod tries to change the UID (later on, in next line), it also tries to update file ownership, but it fails because it can't access/modify certain files
 - The Solution: We manually change ownership BEFORE running usermod.  "Give ownership to UID 1000, group 0 (root group), -R means recursive (all subdirectories and files), and apply this to /home/airflow (user's home directory) and /opt/airflow (where Airflow is installed)"
+- Note: /home/airflow is separate from mounted volumes. This is airflow user's home directory inside of the container, and it contains .bashrc, .profile, and various config files
 ```
 RUN usermod --uid ${AIRFLOW_UID} airflow
 ```
@@ -306,8 +307,217 @@ airflow-init-1 exited with code 0
 ```
 
 ### Important: need a timeline of the "build" stage vs. "docker compose up" stage to explain what is happening at each step
-- 
+- Phase 1: Build Time (docker compose build)
+  - Docker-compose.yaml tells that we are will have a custom "build", because there is a "build" keyword instead of an pre-existing "image" keyword
+  1. Dockerfile starts with apache/airflow:2.9.2
+    - airflow user has UID 50000
+    - /home/airflow owned by UID 50000
+    - /opt/airflow owned by UID 50000
+  2. ARG AIRFLOW_UID (receives 1000 from docker-compose, which receives it from credentials.env in turn)
+  3. USER root
+  4. RUN chown -R 1000:0 /home/airflow && chown -R 1000:0 /opt/airflow
+    - Changes ownership of container's built-in directories to UID 1000 & group 0 (root group)
+  5. RUN usermod --uid 1000 airflow  
+    - Changes airflow user from UID 50000 → UID 1000
+  6. COPY requirements.txt /requirements.txt
+    - Copies from YOUR HOST to container during build
+  7. RUN chown airflow:root /requirements.txt
+    - Requirements.txt inside of the container becomes owned by airflow user with UID = 1000
+  8. Switch back to USER airflow, from root, because we don't need to be root to pip install rqeuirements.txt
+  9. RUN pip install --no-cache-dir -r /requirements.txt
+    - Installs Python packages into the IMAGE
+  10. NO VOLUMES MOUNTED YET!
+    - Your host files are not accessible
+    - Container only has its built-in files (I assume this means only /home/airflow/, config files, etc).  Host folders such as /dags, /config, etc. are not accessible during this build stage
+    - Only the COPY command can bring files from the host to the container during build stage
+  - Note: even though we have one dockerfile, Docker builds multiple images (one per service). Therefore, in the output, it will print out three separate exports, for example:
+    - [airflow-init] exporting to image
+    - [airflow-webserver] exporting to image  
+    - [airflow-scheduler] exporting to image
+  - Note: During the build process, to create an image, these can be done in any order. However, in the run stage, there is a clear dependency where airflow-init goes first
+- Phase 2: Run Time (docker compose up)
+  1. Container starts from our built image
+    - airflow user is UID 1000 ✓
+    - Built-in files owned by UID 1000 ✓
+  2. Docker mounts your volumes:
+    - Host: ./dags (UID 1000) → Container: /opt/airflow/dags (UID 1000) ✓
+    - Host: ./logs (UID 1000) → Container: /opt/airflow/logs (UID 1000) ✓
+  3. Container processes start:
+    - Since webserver and scheduler depend on airflow init to complete successfully first, airflow init runs first, and then the other 2 follow afterward
+    - airflow-init (UID 1000) can read/write mounted volumes, and kicks off the bash commands to create airflow user with username, password, first name, last name, email, etc. ✓
+    - airflow-webserver (UID 1000) can read/write mounted volumes ✓
+    - airflow-scheduler (UID 1000) can read/write mounted volumes ✓
 
+
+### Troubleshooting error "psycopg2.errors.UndefinedColumn: column dag.dag_display_name does not exist"
+- How do we resolve this error?
+```
+psycopg2.errors.UndefinedColumn: column dag.dag_display_name does not exist
+```
+- This is a database schema version mismatch issue:  Airflow 2.9.2 is trying to query a column that doesn't exist in your database
+- This is not a permissions problem where Airflow cannot access RDS
+- Verify that this column is indeed missing from table "dag". You shouldn't see this column listed:
+```
+select column_name from information_schema.columns
+where table_name = 'dag'
+order by column_name;
+```
+- The solution is to use an updated schema of Airflow tables, by changing "airflow db init" to "airflow db migrate":
+```
+  airflow-init:
+    <<: *airflow-common
+    command:
+      - -c
+      - |
+        export PYTHONPATH=${PYTHONPATH:-}:/opt/airflow/etl_drivers:/opt/airflow/utils
+        echo "Inside of container, running: airflow db migrate & airflow users create..."
+        airflow db migrate && \
+```
+- In these cases, it is also possible that a prior version of the database was already created (AWS RDS already has existing tables created through airflow db init), and they will conflict with new tables / database version created by airflow db migrate
+- Use this script to nuke the database and start from scratch. BE VERY CAREFUL - THIS WILL DELETE ALL PUBLIC SCHEMA INCLUDE OTHER TABLES
+```
+DROP SCHEMA public CASCADE;
+CREATE SCHEMA public;
+GRANT ALL ON SCHEMA public TO postgres;
+GRANT ALL ON SCHEMA public TO public;
+```
+
+### The two reset scripts for cleaning the RDS database:
+```
+-- -------------------------------------------------------------------
+-- SCRIPT #1: SELECTIVE TABLE CLEANUP (Airflow-Only Reset)
+-- -------------------------------------------------------------------
+-- 
+-- WHAT IT DOES:
+-- - Drops only Airflow-specific metadata tables
+-- - Preserves the database schema and any non-Airflow tables
+-- - Maintains database users, permissions, and other database objects
+-- 
+-- WHEN TO USE:
+-- - After a failed or inconsistent Airflow setup
+-- - To resolve issues related to stale data, especially after changing
+--   the Fernet key
+-- - When you need to start Airflow with a clean slate but want to
+--   preserve other database objects (views, functions, non-Airflow tables)
+-- - When you share the database with other applications
+-- 
+-- ADVANTAGES:
+-- - Surgical approach - only affects Airflow
+-- - Preserves database permissions and users
+-- - Safer for shared database environments
+-- - No need to re-grant schema permissions
+-- 
+-- DISADVANTAGES:
+-- - Must manually list all Airflow tables (could miss new ones in future versions)
+-- - Less thorough than schema reset
+-- - Won't fix schema-level permission issues
+-- 
+-- HOW TO USE:
+-- 1. Connect to your AWS RDS PostgreSQL database using pgAdmin4
+-- 2. Execute this entire script
+-- 3. Restart Airflow services: docker compose up -d
+-- 4. The airflow-init service will recreate all tables with current schema
+
+DROP TABLE IF EXISTS "job" CASCADE;
+DROP TABLE IF EXISTS "slot_pool" CASCADE;
+DROP TABLE IF EXISTS "log" CASCADE;
+DROP TABLE IF EXISTS "dag_code" CASCADE;
+DROP TABLE IF EXISTS "dag_pickle" CASCADE;
+DROP TABLE IF EXISTS "ab_user" CASCADE;
+DROP TABLE IF EXISTS "ab_register_user" CASCADE;
+DROP TABLE IF EXISTS "connection" CASCADE;
+DROP TABLE IF EXISTS "variable" CASCADE;
+DROP TABLE IF EXISTS "dag_schedule_dataset_reference" CASCADE;
+DROP TABLE IF EXISTS "task_outlet_dataset_reference" CASCADE;
+DROP TABLE IF EXISTS "dag_run" CASCADE;
+DROP TABLE IF EXISTS "dag_tag" CASCADE;
+DROP TABLE IF EXISTS "dag_owner_attributes" CASCADE;
+DROP TABLE IF EXISTS "ab_permission" CASCADE;
+DROP TABLE IF EXISTS "ab_permission_view" CASCADE;
+DROP TABLE IF EXISTS "ab_view_menu" CASCADE;
+DROP TABLE IF EXISTS "ab_user_role" CASCADE;
+DROP TABLE IF EXISTS "ab_role" CASCADE;
+DROP TABLE IF EXISTS "dag_warning" CASCADE;
+DROP TABLE IF EXISTS "dagrun_dataset_event" CASCADE;
+DROP TABLE IF EXISTS "task_instance" CASCADE;
+DROP TABLE IF EXISTS "dag_run_note" CASCADE;
+DROP TABLE IF EXISTS "ab_permission_view_role" CASCADE;
+DROP TABLE IF EXISTS "task_fail" CASCADE;
+DROP TABLE IF EXISTS "task_map" CASCADE;
+DROP TABLE IF EXISTS "task_reschedule" CASCADE;
+DROP TABLE IF EXISTS "xcom" CASCADE;
+DROP TABLE IF EXISTS "task_instance_note" CASCADE;
+DROP TABLE IF EXISTS "session" CASCADE;
+DROP TABLE IF EXISTS "alembic_version" CASCADE;
+```
+
+```
+-- -------------------------------------------------------------------
+-- SCRIPT #2: COMPLETE SCHEMA RESET (Nuclear Option)
+-- -------------------------------------------------------------------
+-- 
+-- WHAT IT DOES:
+-- - Completely destroys and recreates the 'public' schema
+-- - Removes ALL tables, views, functions, sequences, and data
+-- - Resets all permissions to defaults
+-- 
+-- WHEN TO USE:
+-- - When you have irrecoverable database corruption
+-- - After major Airflow version upgrades with migration issues
+-- - When Script #1 doesn't resolve the problem
+-- - When you want to guarantee a completely fresh start
+-- - When the database is dedicated solely to Airflow
+-- 
+-- ADVANTAGES:
+-- - Most thorough reset possible
+-- - Guaranteed to fix any schema inconsistencies
+-- - Automatically handles all database objects
+-- - Future-proof (works regardless of Airflow version changes)
+-- 
+-- DISADVANTAGES:
+-- - Destroys ALL data in the public schema (not just Airflow)
+-- - Removes any custom database objects you may have created
+-- - Requires re-granting permissions to your database user
+-- - More disruptive than selective approach
+-- 
+-- HOW TO USE:
+-- 1. Connect to your AWS RDS PostgreSQL database using pgAdmin4
+-- 2. Execute this entire script
+-- 3. If you get "role postgres does not exist" error, replace 'postgres' 
+--    with your actual database username (e.g., 'joelu')
+-- 4. Restart Airflow services: docker compose up -d
+
+DROP SCHEMA public CASCADE;
+CREATE SCHEMA public;
+
+-- Grant permissions to standard postgres user (if it exists)
+-- Note: This may fail on AWS RDS where 'postgres' user doesn't exist
+GRANT ALL ON SCHEMA public TO postgres;
+
+-- Grant permissions to public (required for proper schema access)
+GRANT ALL ON SCHEMA public TO public;
+
+-- If the postgres grant failed, uncomment and modify the line below
+-- with your actual database username:
+-- GRANT ALL ON SCHEMA public TO joelu;
+```
+
+### Commands for building and starting up Docker containers
+```
+docker compose down --volumes --remove-orphans
+```
+- Stops and removes containers
+- --volumes: deletes persistent data (logs, database data, etc) for a truly clean start
+- --remove-orphans: removes containers not in current compose file, i.e. - removes old containers from previous versions of compose file (if we've changed docker-compose.yaml)
+```
+docker system prune -f
+```
+- Removes unused containers, unused networks, dangling images, build cache
+- -f means force (don't ask for confirmation)
+```
+docker compose build --no-cache
+```
+- Builds images from scratch, ignores all cached layers
 
 ### Add a section for resetting all Airflow-related AWS RDS tables, in cases where:
 - When should we use this option?
