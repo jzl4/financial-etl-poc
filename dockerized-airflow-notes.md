@@ -18,6 +18,248 @@
   - credentials.env
   - .gitignore
 
+### docker-compose.yaml:
+```
+# Define a base configuration to avoid repetition
+x-airflow-base: &airflow-base
+  build:
+    context: .
+    dockerfile: Dockerfile
+    args:
+      # Since we've sent the user ID to 1000 (which is the same as username in Linux) in credentials.env, that will flow into docker-compose.yaml as AIRFLOW_UID as 1000 as well
+      - AIRFLOW_UID=${AIRFLOW_UID}
+  # user: "${AIRFLOW_UID:-1000}:0"   # run as your host UID, group root
+  # Use the .env with RDS credentials in base folder: financial-etl-poc/.env
+  env_file:
+    - ../credentials.env
+  environment:
+    # Construct the database connection string from your .env variables
+    - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://${rds_username}:${rds_password}@${rds_host}:${rds_port}/${rds_dbname}
+    # Set other core Airflow configurations
+    - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+    - AIRFLOW__CORE__LOAD_EXAMPLES=false
+    - AIRFLOW__CORE__FERNET_KEY=${FERNET_KEY}
+    - AIRFLOW__WEBSERVER__SECRET_KEY=${WEBSERVER_SECRET_KEY:-your-super-secret-key-change-me} # Add a default secret key
+  volumes:
+    - ./config:/opt/airflow/config
+    - ./dags:/opt/airflow/dags
+    - ./logs:/opt/airflow/logs
+    - ./plugins:/opt/airflow/plugins
+
+services:
+
+  # The service that initializes the Airflow database and creates the first user
+  airflow-init:
+    <<: *airflow-base
+    container_name: airflow_init
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        # Initialize the database
+        airflow db migrate
+        # Create the admin user if they don't exist
+        airflow users create \
+          --username ${AIRFLOW_USERNAME} \
+          --password ${AIRFLOW_PASSWORD} \
+          --firstname Joe \
+          --lastname Lu \
+          --role Admin \
+          --email Joe.Zhou.Lu@gmail.com || true
+
+  # The Airflow webserver service
+  airflow-webserver:
+    <<: *airflow-base
+    container_name: airflow_webserver
+    restart: always
+    command: airflow webserver
+    ports:
+      - "8080:8080"
+    depends_on:
+      # This ensures the webserver only starts after the database is initialized
+      airflow-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # The Airflow scheduler service
+  airflow-scheduler:
+    <<: *airflow-base
+    container_name: airflow_scheduler
+    restart: always
+    command: airflow scheduler
+    depends_on:
+      # This ensures the scheduler only starts after the database is initialized
+      airflow-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "airflow jobs check --job-type SchedulerJob --hostname \"$${HOSTNAME}\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+```
+
+- (To do: Explain every section of this)
+
+### Dockerfile:
+```
+# Most recent LTS version is 2.9.2
+FROM apache/airflow:2.9.2
+
+# Since we've sent the user ID to 1000 (which is the same as username in Linux) in credentials.env, that will flow into docker-compose.yaml as AIRFLOW_UID, and then flow into this Dockerfile
+ARG AIRFLOW_UID 
+
+# Switch to root to: modify user accounts, change file ownership, and install system packages
+USER root
+
+# Fix ownership issues before modifying the user
+# First, change ownership of airflow's home directory and related files
+RUN chown -R ${AIRFLOW_UID}:0 /home/airflow && \
+    chown -R ${AIRFLOW_UID}:0 /opt/airflow
+
+# Now modify the airflow user's UID to match the host
+RUN usermod --uid ${AIRFLOW_UID} airflow
+
+# Copy requirements and install them
+COPY requirements.txt /requirements.txt
+
+# Change ownership of the requirements file to the airflow user
+RUN chown airflow:root /requirements.txt
+
+# Switch back to airflow user BEFORE installing packages
+USER airflow
+
+# Install packages as the airflow user
+RUN pip install --no-cache-dir -r /requirements.txt
+```
+
+Explanation of this file:
+```
+FROM apache/airflow:2.9.2
+```
+- We start with the official Apache Airflow image version 2.9.2
+- This version includes critical bug fixes from prior versions, including: scheduler memory leaks that occurred in 2.9.1, DAG parsing race conditions, UI performance issues with large DAGs, etc.
+- Later versions such as 2.10.0+ introduce several breaking changes, including: changed default postgres provider behavior, deprecated several operators, changed default config values, etc.
+- In a nutshell, many major companies are running 2.9.2 in production, given: stability proven at scale, community support is extensive, stack overflow has many 2.9.2-specific answers, and github issues are well-documented
+```
+ARG AIRFLOW_UID 
+```
+- We've set AIRFLOW_UID=1000 in credentials.env
+- docker-compose.yaml pulls this paramenter from credentials.env and assigns to AIRFLOW_UID
+  ```
+    # docker-compose.yaml
+      args:
+        - AIRFLOW_UID=${AIRFLOW_UID}
+    env_file:
+      - ../credentials.env
+  ```
+- That gets passed to the Dockerfile, so ultimately, the Dockerfile inherits the UID of 1000 from the credentials.env
+  ```
+    # docker-compose.yaml
+  dockerfile: Dockerfile
+  ```
+```
+USER root
+```
+- The base Airflow runs as the airflow user by default, but we need administrative privileges to: modify user accounts (usermod), change file ownership (chown), install system packages if needed
+```
+RUN chown -R ${AIRFLOW_UID}:0 /home/airflow && \
+    chown -R ${AIRFLOW_UID}:0 /opt/airflow
+```
+- The airflow user in the base image has a specific UID (let's say 50000). All files in /home/airflow and /opt/airflow are owned by this UID.
+- Your Goal: Change the airflow user's UID to match your host system (1000 in your case)
+- The Issue: When usermod tries to change the UID (later on, in next line), it also tries to update file ownership, but it fails because it can't access/modify certain files
+- The Solution: We manually change ownership BEFORE running usermod.  "Give ownership to UID 1000, group 0 (root group), -R means recursive (all subdirectories and files), and apply this to /home/airflow (user's home directory) and /opt/airflow (where Airflow is installed)"
+```
+RUN usermod --uid ${AIRFLOW_UID} airflow
+```
+- Now that we've fixed the file ownership issues, usermod can successfully change the airflow user's UID from the original (50000) to your desired UID (1000).
+- Why match UIDs? When you mount volumes from your host to the container, the host files are owned by your user ID (UID 1000), and container files are also owned by airflow user (now also UID 1000), so no permission conflicts
+```
+COPY requirements.txt /requirements.txt
+RUN chown airflow:root /requirements.txt
+```
+- Copy requirements.txt file into the container as /requirements.txt
+- Change ownership to "airflow user, root group" so that airflow user can read it
+```
+USER airflow
+RUN pip install --no-cache-dir -r /requirements.txt
+```
+-- Switch back to the airflow user for security best practices
+-- Install Python packages as the non-root user from /requirements.txt
+-- Argument --no-cache-dir saves space by not storing pip cache
+
+In summary, this combination of steps in Dockerfile leads to:
+1. airflow user has UID 50000
+2. We manually change file ownership to UID 1000 first
+3. usermod changes UID to 1000 (files already owned by 1000, so no conflicts)
+4. Success!
+
+### More detailed explanation of what is happening with file permissions, ownership, user IDs, etc.
+- It's almost like we have two different computers trying to share files: local Linux machine (the host) and the Docker container (a mini Linux machine inside of your machine).  Each has their own users, which are identified by user IDs (UIDs)
+- By default, without making these changes in Dockerfile, when you start up:
+- On your host machine, your UID = 1000, the files that you create are owned by UID = 1000, so project folder /home/ubuntu/financial-etl-poc/ is owned by UID 1000
+- Inside of the Airflow Docker container, there is an airflow user with UID = 50000 (different UID), so airflow files are owned by UID 50000 and airflow process runs as UID 50000
+- When you mount volumes in docker-compose, you're essentially saying: "Hey Docker, let the container access my host folders directly":
+```
+volumes:
+  - ./dags:/opt/airflow/dags
+  - ./logs:/opt/airflow/logs
+```
+- But here is where issues arise:
+  - Container side: /opt/airflow/dags (expects UID 50000) → Host side: ./dags (UID 1000)
+  - Container side: /opt/airflow/logs (expects UID 50000) → Host side: ./logs (UID 1000)
+- Result: The Airflow process (running as UID 50000) can't read/write your files (owned by UID 1000). Permission denied!
+- What the Dockerfile fix actually does:
+- Step 1: The Container Starts Building
+  - Base airflow image: airflow user = UID 50000
+  - All airflow files owned by UID 50000
+- Step 2: We Get Your Host UID
+  - ARG AIRFLOW_UID=1000  # This comes from your docker-compose
+  - Your docker-compose passes in: "Hey, the host user is UID 1000"
+- Step 3: We Fix Ownership BEFORE Changing the User
+  ```
+  # From Dockerfile
+  RUN chown -R 1000:0 /home/airflow && \
+    chown -R 1000:0 /opt/airflow
+  ```
+  - Takes ALL airflow files (originally owned by UID 50000)
+  - Changes ownership to UID 1000 (your host user)
+- Step 4: We Change the Airflow User's ID
+  ```
+  RUN usermod --uid 1000 airflow
+  ```
+  - Changes the airflow user from UID 50000 → UID 1000
+  - Now airflow user has the SAME ID as your host user
+- Step 5: Everything Lines Up! 
+  - Host side: ubuntu (UID 1000) = container side: airflow (UID 1000)
+  - Airflow can read/write your DAG files and write log files back to your host
+
+### How to check your identity in Linux CLI
+How to check your UID on your local machine:
+```
+echo "Username: $(whoami), UID: $(id -u)"
+```
+This should return something like:
+```
+Username: ubuntu, UID: 1000
+```
+
+How to check your Airflow UID inside of Docker container
+```
+docker run --rm -it apache/airflow:2.9.2 bash -c "id airflow"
+```
+This should return something like:
+```
+uid=50000(airflow) gid=0(root) groups=0(root)
+```
+
+
+
+
 ### How these pieces interact with each other
 - The dockerfile is kind of for build time
 - The docker-compose is kind of for run-time
@@ -64,7 +306,7 @@ airflow-init-1 exited with code 0
 ```
 
 ### Important: need a timeline of the "build" stage vs. "docker compose up" stage to explain what is happening at each step
-
+- 
 
 
 ### Add a section for resetting all Airflow-related AWS RDS tables, in cases where:
@@ -260,14 +502,6 @@ airflow-init:
     ```
 - Therefore, the default entrypoint is not sufficient for our needs in airflow init, and we have to override the default entry, and create our own custom one. We set the entry point to /bin/bash, use -c flag to say "whatever string that follows needs to be executed as a shell script" and |- is YAML syntax to define a multi-line string. Through this, we are able to: execute multiple commands in sequence, run a multi-line shell script, and handle bash's if/else logic in our entrypoint command
 
-### How to check your identity in Linux CLI
-```
-$ whoami
-```
-```
-$ id -u
-```
-- If "whoami" prints out "root" and "id -u" returns 0, then you are already root user
 
 ### UID and permissions in mounted folders issue
 - When Airflow runs inside of a Docker container, a one-to-one mapping is created between local folders (on my EC2) and the container folders (inside of Docker container).   such that when the contents of container folders such as opt/airflow/dags or opt/airflow/logs become linked to mounted directories (inside of container) such as opt/airflow/dags, opt/airflow/logs. 
@@ -299,11 +533,10 @@ Therefore, the file itself is never copied into the container; the container onl
 - Discuss more about build vs. image
 - Need to discuss YAML anchors, which are a block of config that avoids duplication. Example: &airflow-common
 
-(To preview how these notes look, press Ctrl+Shift+V)
-
 ### After adding DAGs later on:
 - Check with Claude Opus how I need to modify my Python scripts to have conditional sys.path.append statements. Depending on whether or not I am running the Python script from local folder in EC2 vs. inside of Docker container (if /opt/airflow exists), sys.path.append(...) should append either:
   - the project_root_folder (if local) or 
   - /opt/airflow (if inside of container)
 - I also need to mount my credentials.env into the Docker container as well?
 
+(To preview how these notes look, press Ctrl+Shift+V)
