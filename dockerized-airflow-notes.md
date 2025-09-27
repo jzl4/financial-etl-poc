@@ -148,7 +148,7 @@ FROM apache/airflow:2.9.2
 ARG AIRFLOW_UID 
 ```
 - We've set AIRFLOW_UID=1000 in credentials.env
-- docker-compose.yaml pulls this paramenter from credentials.env and assigns to AIRFLOW_UID
+- docker-compose.yaml pulls this parameter from credentials.env and assigns to AIRFLOW_UID
   ```
     # docker-compose.yaml
       args:
@@ -161,10 +161,12 @@ ARG AIRFLOW_UID
     # docker-compose.yaml
   dockerfile: Dockerfile
   ```
+
 ```
 USER root
 ```
 - The base Airflow runs as the airflow user by default, but we need administrative privileges to: modify user accounts (usermod), change file ownership (chown), install system packages if needed
+
 ```
 RUN chown -R ${AIRFLOW_UID}:0 /home/airflow && \
     chown -R ${AIRFLOW_UID}:0 /opt/airflow
@@ -172,25 +174,31 @@ RUN chown -R ${AIRFLOW_UID}:0 /home/airflow && \
 - The airflow user in the base image has a specific UID (let's say 50000). All files in /home/airflow and /opt/airflow are owned by this UID.
 - Your Goal: Change the airflow user's UID to match your host system (1000 in your case)
 - The Issue: When usermod tries to change the UID (later on, in next line), it also tries to update file ownership, but it fails because it can't access/modify certain files
-- The Solution: We manually change ownership BEFORE running usermod.  "Give ownership to UID 1000, group 0 (root group), -R means recursive (all subdirectories and files), and apply this to /home/airflow (user's home directory) and /opt/airflow (where Airflow is installed)"
+- The Solution: We manually change ownership BEFORE running usermod, because only root can modify user accounts (change UID), change file ownership, or install system packages.
+- This code snippet says: "Give ownership to UID 1000, group 0 (root group), -R means recursive (all subdirectories and files), and apply this to /home/airflow (user's home directory) and /opt/airflow (where Airflow is installed)"
+- We have to change the ownership of existing files BEFORE modifying the user, because currently, Airflow UID is 50000, these files are owned by UID 50000, so we have the power to change their ownership now.  Conversely if we change the user UID via "usermod..." to 1000 first, these files will become "orphaned" (owned by non-existent UID 50000), and then we cannot change ownership of these files because we are no longer the owner!
 - Note: /home/airflow is separate from mounted volumes. This is airflow user's home directory inside of the container, and it contains .bashrc, .profile, and various config files
+
 ```
 RUN usermod --uid ${AIRFLOW_UID} airflow
 ```
 - Now that we've fixed the file ownership issues, usermod can successfully change the airflow user's UID from the original (50000) to your desired UID (1000).
 - Why match UIDs? When you mount volumes from your host to the container, the host files are owned by your user ID (UID 1000), and container files are also owned by airflow user (now also UID 1000), so no permission conflicts
+ 
+
 ```
 COPY requirements.txt /requirements.txt
 RUN chown airflow:root /requirements.txt
 ```
 - Copy requirements.txt file into the container as /requirements.txt
-- Change ownership to "airflow user, root group" so that airflow user can read it
+- Change ownership to "airflow user, root group" so that airflow user can read it.  Recall that airflow:root now refers to UID 1000 (not 50000)
+
 ```
 USER airflow
 RUN pip install --no-cache-dir -r /requirements.txt
 ```
 -- Switch back to the airflow user for security best practices
--- Install Python packages as the non-root user from /requirements.txt
+-- Install Python packages as the non-root user from /requirements.txt (still UID 1000)
 -- Argument --no-cache-dir saves space by not storing pip cache
 
 In summary, this combination of steps in Dockerfile leads to:
@@ -198,6 +206,87 @@ In summary, this combination of steps in Dockerfile leads to:
 2. We manually change file ownership to UID 1000 first
 3. usermod changes UID to 1000 (files already owned by 1000, so no conflicts)
 4. Success!
+
+### Docker containers and file directories
+- Docker containers are isolated environments - Yes, like a lightweight virtual computer
+- Containers have their own filesystem
+- But, even without volume mounts, Docker containers already have a complete filesystem that physically exists on your EC2:
+  - The container's filesystem is stored in the Docker's storage layers (usually in /var/lib/docker/)
+  - Files written inside of the container go to a "writable layer" on your host's disk
+  - And these files disappear when the container is removed
+- Volume mounts are thus OPTIONAL.  They are used when you want to:
+  - Persist data beyond the container's lifetime
+  - Share files between the host and container
+  - Develop code locally while running that code in a container
+- Thus, volume mounts are required because:
+  - DAGs need to be edited on EC2 and immediately refreshed/visible in the container
+  - Logs need to persist even if the container restarts
+  - Plugins/config need to be managed from outside of the container
+- In the Dockerized Airflow setup, because you have a mount, which is a one-to-one link, between local folders to container folders, this prevents us from having to rebuild the Docker image every time that we modify the DAGs locally. This means that if I change a DAG locally on my EC2, that immediately becomes updated in the same exact way inside of the container
+- If I update logs inside of the container with information on how my Airflow jobs performed, they would normally just get erased, so I can't read the logs on my local folders.  So, the mounted drives allow the logs to be written back to my local folders, so they can be persistent
+- What happens if we don't have volume mounts for Airflow's Docker containers?
+  - Every time we change anything in our DAGs in our local folders, we have to re-build the docker image using "docker compose build".  This would be time-consuming and bad practice
+  - Logs created by Airflow running inside of the container cannot be sent back to my local machine, so I won't be able to read the logs after the container shuts off
+
+
+### Scheduler and Webserver are actually separate containers!
+- Each Airflow component runs in its own container, not all in one container.
+```
+# docker-compose.yaml typically has:
+services:
+  airflow-webserver:    # Container 1
+    image: apache/airflow:2.x.x
+    command: webserver
+    volumes:
+      - ./dags:/opt/airflow/dags  # Must mount DAGs
+  
+  airflow-scheduler:    # Container 2
+    image: apache/airflow:2.x.x
+    command: scheduler
+    volumes:
+      - ./dags:/opt/airflow/dags  # Must mount same DAGs
+```
+
+### When we mount drives/folders, how does Airflow's metabase get persisted?  Talk me through how airflow-init is related to this
+- Typically, the external postgre container handles it
+- Airflow-init is a one-time initialization container that:
+  - Waits for the database to be ready
+  - Runs database migrations (airflow db migrate)
+  - Create admin user
+  - Exits successfully
+```
+# Inside of docker-compose.yaml. The service that initializes the Airflow database and creates the first user
+  airflow-init:
+    <<: *airflow-base
+    container_name: airflow_init
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        # Initialize the database
+        airflow db migrate
+        # Create the admin user if they don't exist
+        airflow users create \
+          --username ${AIRFLOW_USERNAME} \
+          --password ${AIRFLOW_PASSWORD} \
+          --firstname Joe \
+          --lastname Lu \
+          --role Admin \
+          --email Joe.Zhou.Lu@gmail.com || true
+    environment:
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+    depends_on:
+      - postgres
+```
+- airflow db migrate is idempotent (safe to run multiple times)
+- User creation fails if user exists, but || true handles it
+- Thus:
+  - First run: User doesn't exist → Creates user → Success
+  - Second run: User exists → Command fails → || true makes it succeed anyway
+- The user account information is stored in the Airflow metadata database, not in containers or images:
+  - ab_user table (Username, email, names)
+  - ab_password table (Password hashes here)
+
 
 ### More detailed explanation of what is happening with file permissions, ownership, user IDs, etc.
 - It's almost like we have two different computers trying to share files: local Linux machine (the host) and the Docker container (a mini Linux machine inside of your machine).  Each has their own users, which are identified by user IDs (UIDs)
@@ -238,6 +327,21 @@ volumes:
 - Step 5: Everything Lines Up! 
   - Host side: ubuntu (UID 1000) = container side: airflow (UID 1000)
   - Airflow can read/write your DAG files and write log files back to your host
+
+### More on the file mapping issue
+- Docker volumes create a bridge between local directories and container directories
+- When writing inside the container, you're actually writing to the local filesystem
+- The default EC2 user has UID 1000
+- The Airflow default UID is 50000
+- When we mount volumes:
+  - The local directories retain their original ownership, typically 1000 on EC2
+  - Inside the container, the mounted directories appear with the UID as they have the host (which is 1000)
+  - The airflow process (running as 50000) tries to write to directories owned by UID 1000, which fails because UID 50000 doesn't have write permissions to UID 1000's directories
+- Naturally, there are actually 2 ways to resolve this, then:
+  - Option 1: Change Airflow UID to 1000
+  - Option 2: Change local directory ownership to 50000
+- Option 2 is less preferred because: the EC2 user (with UID 1000) loses direct ownership of these files, I'll need to use "sudo" to manage files locally, and it's really not intuitive to have an non-existent user (50000) own files on my local host
+
 
 ### How to check your identity in Linux CLI
 How to check your UID on your local machine:
